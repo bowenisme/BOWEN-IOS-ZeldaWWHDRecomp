@@ -17,6 +17,8 @@ ap.add_argument('--game', type=Path, help='your extracted Wii U game directory')
 ap.add_argument('--check-game', action='store_true', help='validate game files without building')
 ap.add_argument('--team', default=os.environ.get('DEVELOPMENT_TEAM'), help='Xcode development team ID')
 ap.add_argument('--bundle-id', help='bundle identifier registered for your signing team')
+ap.add_argument('--free-account', action='store_true',
+                help='sign with a free Apple ID: leave out the paid-only memory entitlements')
 ap.add_argument('--configuration', default='RelWithDebInfo', choices=['Debug','RelWithDebInfo','Release'])
 a = ap.parse_args()
 if a.stub and a.check_game:
@@ -64,6 +66,7 @@ else:
 cmake_args = [cmake, '-S', root, '-B', binary, '-G', 'Xcode', '-DCMAKE_SYSTEM_NAME=iOS',
      '-DCMAKE_OSX_SYSROOT=iphoneos', '-DCMAKE_OSX_ARCHITECTURES=arm64',
      '-DCMAKE_OSX_DEPLOYMENT_TARGET=17.0', '-DWWHD_RENDERER=METAL', f'-DGEN_DIR={gen}',
+     f'-DWWHD_IOS_FREE_ACCOUNT={"ON" if a.free_account else "OFF"}',
      ]
 if a.stub:
     cmake_args.append('-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO')

@@ -448,6 +448,12 @@ endif()
 
 if(WWHD_IOS)
   set(WWHD_IOS_BUNDLE_ID "org.wwhdrecomp.ios" CACHE STRING "iPhone/iPad bundle identifier for your signing team")
+  option(WWHD_IOS_FREE_ACCOUNT "Sign with a free Apple ID (no extended memory entitlements)" OFF)
+  if(WWHD_IOS_FREE_ACCOUNT)
+    set(WWHD_IOS_ENTITLEMENTS "${CMAKE_SOURCE_DIR}/ios/wwhd-free.entitlements")
+  else()
+    set(WWHD_IOS_ENTITLEMENTS "${CMAKE_SOURCE_DIR}/ios/wwhd.entitlements")
+  endif()
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/ios/Info.plist.in")
   set(WWHD_IOS_ICON_DIR "${CMAKE_SOURCE_DIR}/ios/icons" CACHE PATH "Optional local iOS app icons")
   # Direct PNG resources avoid booting AssetCatalogSimulatorAgent on the build Mac.
@@ -477,8 +483,9 @@ if(WWHD_IOS)
     XCODE_ATTRIBUTE_ENABLE_BITCODE "NO"
     XCODE_ATTRIBUTE_SUPPORTED_PLATFORMS "iphoneos"
     XCODE_ATTRIBUTE_SUPPORTS_MACCATALYST "NO"
-    # iPhone: room for the 4 GiB guest address window and the game's memory (Tideport recipe)
-    XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${CMAKE_SOURCE_DIR}/ios/wwhd.entitlements")
+    # paid developer team: room for the 4 GiB guest address window and the game's memory;
+    # free Apple ID (WWHD_IOS_FREE_ACCOUNT): no special entitlements, which free teams can't sign
+    XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${WWHD_IOS_ENTITLEMENTS}")
   return() # desktop tools and their dependencies run on the build Mac
 endif()
 

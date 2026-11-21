@@ -1,3 +1,109 @@
+# 📱 Wind Waker HD on iPhone and iPad (this fork)
+
+This fork adds **iPhone and iPad** to the native Wind Waker HD port. It follows the latest
+[main project](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp) and keeps the iOS work from the community iOS port:
+Metal rendering, 60 fps, MetalFX upscaling, touch controls, controller support, the GamePad screen, and a full-screen /
+black-bars switch. Use the `ios` branch.
+
+> **No downloads of the game or the app are provided here, and none ever will be.** You build the app on your own Mac
+> from **your own** copy of the game. The app contains code recompiled from your copy, so it is for your own devices
+> only. Don't share the `.ipa` or the game files.
+
+### What you need
+
+- **A Mac with Apple Silicon** and **Xcode** (free from the App Store; on older macOS, get a matching version from
+  [developer.apple.com/download/all](https://developer.apple.com/download/all)). Open Xcode once after installing.
+- **An iPhone or iPad** with iOS/iPadOS 17 or later and a USB cable. Recent iPhones (iPhone 15 Pro and newer) run it
+  best.
+- **Your own Wii U copy of The Wind Waker HD, USA version** (a `.wua` from your console, or an extracted folder with
+  `code/`, `content/` and `meta/`). The EUR version works too if you give the extracted folder.
+- **The macOS release of the main project** ([Releases](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp/releases)),
+  unzipped into Applications. The script borrows its game extractor.
+- **An Apple ID signed in to Xcode.** A **paid Apple Developer account** ($99/year) is strongly recommended. See
+  [Paid or free Apple ID](#paid-or-free-apple-id).
+
+### Install
+
+1. **Get the code.** In Terminal:
+   ```sh
+   git clone --recursive -b ios https://github.com/bowenisme/BOWEN-IOS-ZeldaWWHDRecomp.git wwhd-ios
+   cd wwhd-ios
+   ```
+2. **Prepare Xcode** (first time only):
+   ```sh
+   sudo xcode-select -s /Applications/Xcode.app
+   xcodebuild -downloadPlatform iOS
+   ```
+   Then in Xcode: **Settings > Accounts > +** to add your Apple ID, select your team, and click **Manage Certificates
+   > + > Apple Development**.
+3. **Prepare your iPhone:** connect it to the Mac, unlock it, and tap **Trust**. Turn on **Settings > Privacy &
+   Security > Developer Mode** (the phone restarts). If you use a paid account, add the phone under **Devices** at
+   [developer.apple.com/account](https://developer.apple.com/account) (the script prints the UDID if it's missing).
+4. **Install the helper for newer iOS versions** (needed when your Xcode is older than your iOS):
+   ```sh
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"   # if you don't have Homebrew
+   brew install ideviceinstaller
+   ```
+5. **Build and install:**
+   ```sh
+   tools/ios/build-iphone.sh --wua "/path/to/your/game.wua"
+   ```
+   or, with an already extracted game, `tools/ios/build-iphone.sh --game /path/to/game`.
+   The first build takes 20 to 60 minutes. The script checks your game, finds your signing team, builds, and
+   installs to the connected iPhone.
+6. **Copy the game into the app** (first install only): open **Finder**, click your iPhone in the sidebar, go to the
+   **Files** tab, and drag the extracted game folder (the script prints where it is, `build/ios-work/game`) onto
+   **The Legend of Zelda: The Wind Waker HD**. It must show up as a folder named `game`.
+7. **Launch it.** If iOS says the developer isn't trusted: **Settings > General > VPN & Device Management**, then
+   trust your certificate.
+
+### Updating
+
+```sh
+cd wwhd-ios
+git pull && git submodule update --init --recursive
+tools/ios/build-iphone.sh
+```
+
+Your extracted game is reused, so `--wua` isn't needed again. Updating keeps your saves and the game folder on the
+phone, as long as you keep the same team (the app ID is based on it). Before a big update, it's a good idea to copy
+the `save` and `state` folders off the phone in Finder's Files tab as a backup.
+
+### Paid or free Apple ID
+
+| | Paid Apple Developer account | Free Apple ID |
+|---|---|---|
+| App lasts | 1 year, then rebuild | **7 days**, then rebuild |
+| Memory entitlements | Yes (more memory, large address space) | No |
+| Command | `tools/ios/build-iphone.sh ...` | `tools/ios/build-iphone.sh --free-account ...` |
+
+The game reserves a large block of memory, and the paid-only entitlements make that reliable. **Free-account builds
+are experimental and may crash at launch.** For SideStore or AltStore, `--sidestore` makes an `.ipa` (without paid
+entitlements) to install from SideStore instead of over USB.
+
+Other options: `--team XXXXXXXXXX` if you have several teams, `--bundle-id` to choose the app ID, `--no-install` to
+only build. Run `tools/ios/build-iphone.sh --help` for the list.
+
+### Troubleshooting
+
+- **"Xcode has no iOS platform":** run `xcodebuild -downloadPlatform iOS`.
+- **"No Apple Development certificate":** do the Xcode Accounts step in step 2.
+- **Install fails with a device or Developer Disk Image error:** your Xcode is older than your iOS. Install
+  `ideviceinstaller` (step 4) and run the script again.
+- **"This iPhone isn't registered to your developer team":** add its UDID under Devices on the developer site.
+- **Black screen or instant crash:** check the `game` folder is in the app (step 6) and contains `code`, `content`
+  and `meta`. Make sure the game is the unmodified v0 release.
+- **Build errors:** please [open an issue](https://github.com/bowenisme/BOWEN-IOS-ZeldaWWHDRecomp/issues) with the
+  `error:` lines the script prints (the full log is in `build/ios-work/build.log`).
+
+### Credits
+
+All credit for the port goes to the [ZeldaWWHDRecomp](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp) team and its
+contributors, and to JammyYan for the original iOS port this fork builds on. This fork only keeps the iOS work up to date
+with the main project. Please don't ask the main project for help with iPhone builds; open issues here instead.
+
+---
+
 # The Legend of Zelda: The Wind Waker HD — native port (macOS, Linux, Windows, Android)
 
 [![Discord](https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/dhFYzCJUAm)
