@@ -486,6 +486,10 @@ if(WWHD_IOS)
     # paid developer team: room for the 4 GiB guest address window and the game's memory;
     # free Apple ID (WWHD_IOS_FREE_ACCOUNT): no special entitlements, which free teams can't sign
     XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${WWHD_IOS_ENTITLEMENTS}")
+  # full save states (zstd, LZ4) are compiled for iOS from pinned sources
+  include(cmake/Zstd.cmake)
+  include(cmake/FullStateCodecs.cmake)
+  target_link_libraries(wwhd PRIVATE wwhd_state_codecs)
   return() # desktop tools and their dependencies run on the build Mac
 endif()
 

@@ -497,8 +497,17 @@ int drc_modes() { return gfx::kDrcModeCount; }
 bool drc_mode_offered(int m) { return gfx::drc_mode_offered(m); }
 int drc_mode() { return gfx::g_mode; }
 void set_drc_mode(int m) { if (drc_mode_offered(m)) gfx::display_set_mode(m); }
-int pip_corner() { return gfx::g_corner; }
-void set_pip_corner(int c) { gfx::g_corner = std::clamp(c,0,3); }
+int pip_anchor() { return gfx::g_pip_anchor; }
+void set_pip_anchor(int c) { gfx::g_pip_anchor = std::clamp(c,0,int(gfx::kPipCustom)); }
+void save_pip_position() {}
+// main-project host hooks with no iPhone equivalent yet (a save-folder picker comes with cross-save)
+void choose_save_folder(std::function<void(std::string)> chosen) { chosen({}); }
+void choose_file(const char*, const char*, bool, std::function<void(std::string)> chosen) { chosen({}); }
+bool displays_swapped() { return false; }
+void set_displays_swapped(bool) {}
+void quit() {}  // iOS apps are closed from the app switcher
+bool quit_from_menu() { return false; }
+int startup_drc_mode() { return gfx::g_mode; }
 float pip_size() { return gfx::g_pip_size; }
 void set_pip_size(float s) { gfx::g_pip_size = std::clamp(s,0.1f,0.5f); }
 float pip_opacity() { return gfx::g_pip_opacity; }
