@@ -1,10 +1,11 @@
 # zstd is already pinned by Zstd.cmake. Raw liblz4 is also needed on Apple
 # to read portable v2 full states; Apple Compression remains for legacy v1.
-if(NOT TARGET lz4_static AND NOT WWHD_BUNDLED_DEPS)
+# iOS cross-compiles: a Mac/Homebrew liblz4 can't be linked into the app, so always build the pinned source.
+if(NOT TARGET lz4_static AND NOT WWHD_BUNDLED_DEPS AND NOT WWHD_IOS)
   find_path(STATE_LZ4_INCLUDE_DIR lz4.h)
   find_library(STATE_LZ4_LIBRARY NAMES lz4)
 endif()
-if(NOT TARGET lz4_static AND (WWHD_BUNDLED_DEPS OR NOT STATE_LZ4_INCLUDE_DIR OR NOT STATE_LZ4_LIBRARY))
+if(NOT TARGET lz4_static AND (WWHD_BUNDLED_DEPS OR WWHD_IOS OR NOT STATE_LZ4_INCLUDE_DIR OR NOT STATE_LZ4_LIBRARY))
   include(FetchContent)
   set(LZ4_BUILD_CLI OFF CACHE BOOL "" FORCE)
   set(LZ4_BUILD_LEGACY_LZ4C OFF CACHE BOOL "" FORCE)

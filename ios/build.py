@@ -66,6 +66,7 @@ else:
 cmake_args = [cmake, '-S', root, '-B', binary, '-G', 'Xcode', '-DCMAKE_SYSTEM_NAME=iOS',
      '-DCMAKE_OSX_SYSROOT=iphoneos', '-DCMAKE_OSX_ARCHITECTURES=arm64',
      '-DCMAKE_OSX_DEPLOYMENT_TARGET=17.0', '-DWWHD_RENDERER=METAL', f'-DGEN_DIR={gen}',
+     '-DWWHD_BUNDLED_ZSTD=ON',  # build zstd for iOS from source (a Homebrew libzstd is a Mac library)
      f'-DWWHD_IOS_FREE_ACCOUNT={"ON" if a.free_account else "OFF"}',
      ]
 if a.stub:

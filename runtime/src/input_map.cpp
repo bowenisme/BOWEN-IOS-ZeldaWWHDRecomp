@@ -517,6 +517,8 @@ std::array<int, 4> hud_spots(const Mapping& m) {
         taken |= 1u << free;
     }
     return spots;
+}
+
 PadFamily apple_pad_family(const char* product_category, const char* vendor_name, const FaceLabel labels[4]) {
     auto lower = [](const char* text) {
         std::string out;

@@ -31,6 +31,7 @@
 #include "guest_addr.h"
 #include "gfx/metal.h"
 #include "gfx/metal_upscale.h"
+#include "gfx/metal_gamepad_backdrop.h"
 #import <MetalFX/MetalFX.h>
 #include "gx2/gx2.h"
 #include "gfx/renderer.h"
@@ -272,6 +273,9 @@ static void start_live_input_bridge(NSString* documents) {
 namespace gfx {
 bool fxaa_enabled();
 void dump_texture(id<MTLTexture>, const char*, bool, bool);
+// the picture's size at full internal resolution (same helpers as display.mm on the Mac)
+static float nominal_w(const Screen& s) { return s.tex ? float(s.tex.width) / s.dyn : 0.0f; }
+static float nominal_h(const Screen& s) { return s.tex ? float(s.tex.height) / s.dyn : 0.0f; }
 #include "gfx/metal_present.inc"
 
 bool host_setting(const char* key, std::string& value) {
