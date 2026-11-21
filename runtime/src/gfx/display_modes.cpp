@@ -82,6 +82,7 @@ void load_second_screen_off(bool off) {
     g_second_screen_off = off;
     g_second_screen_loaded = true;
 }
+std::atomic<bool> g_drc_during_switch{false};
 
 int find_name(const char* const* names, int n, const char* s, int def) {
     for (int i = 0; i < n; i++)
@@ -161,6 +162,8 @@ bool pip_shown_now() {
     if (g_pip_preview) return true;
     if (g_mode == kDrcPip) return g_shown;
     if (g_mode == kDrcAuto) {
+        const auto state=gamepad_ui();
+        if (g_drc_during_switch && state.available && state.switching && !state.off_tv) return true;
         AutoPipDecision decision{g_auto_until.load()};
         return decision.shown(gamepad_ui(), g_auto_pin, display_now());
     }
@@ -448,6 +451,16 @@ bool main_picture(float* x, float* y, float* w, float* h) {
     const Box& b = L.drc_only ? L.pip : L.tv;
     if (g_tv_dw <= 0 || g_tv_dh <= 0 || b.w <= 0 || b.h <= 0) return false;
     *x = b.x / g_tv_dw, *y = b.y / g_tv_dh, *w = b.w / g_tv_dw, *h = b.h / g_tv_dh;
+    return true;
+}
+bool gamepad_picture(float* x, float* y, float* w, float* h, bool* fullscreen) {
+    std::lock_guard<std::mutex> lk(g_layout_mu);
+    const auto& picture = g_tv_layout.pip;
+    if (fullscreen) *fullscreen = false;
+    if (!g_tv_layout.pip_on || g_tv_dw <= 0 || g_tv_dh <= 0 || picture.w <= 0 || picture.h <= 0) return false;
+    *x = picture.x / g_tv_dw; *y = picture.y / g_tv_dh;
+    *w = picture.w / g_tv_dw; *h = picture.h / g_tv_dh;
+    if (fullscreen) *fullscreen = g_tv_layout.drc_only;
     return true;
 }
 

@@ -7,6 +7,16 @@ game.key
 /cemu/
 # generated / build output
 /build/
+# Local app icon crops from the original game cover.
+/ios/icons/
+# Local device reports and personal build notes; public instructions live in ios/README.md.
+/ios/*验证.txt
+*.ipa
+*.p12
+*.pem
+*.mobileprovision
+*.xcuserstate
+xcuserdata/
 out/
 __pycache__/
 filelist.txt
@@ -26,6 +36,7 @@ captures/
 *.key
 *.wud
 *.wux
+*.wua
 *.iso
 *.rvz
 template.bin
@@ -44,3 +55,72 @@ headstart.bin
 
 # Release template is fetched from the pinned private repository.
 /tools/shadercache/template.bin
+
+# Local game/save data and generated device/build outputs.
+/rom/
+/roms/
+/localization-source/
+/saves/
+/save_states/
+/savestates/
+/screenshots/
+/screenshot/
+**/screenshots/
+**/screenshot/
+/diagnostics/
+/device-reports/
+ios/build/
+ios/DerivedData/
+DerivedData/
+**/xcuserdata/
+**/CMakeFiles/
+**/.build/
+*.app/
+*.xcarchive/
+*.xcresult/
+*.dSYM/
+*.nkit.iso
+*.gcm
+*.wbfs
+*.sav
+*.savestate
+*.state
+*.srm
+*.gci
+*.gcs
+*.ips
+*.crash
+*.dmp
+*.spindump
+*.trace
+*.bak
+*.backup
+*.orig
+*~
+*.p8
+*.der
+*.cer
+*.crt
+*.pfx
+# Opaque game and localization archives are local inputs/outputs, not source.
+*.zip
+*.pack
+*.szs
+*.sarc
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+**/Screenshot*.png
+**/Screenshot*.jpg
+**/Screenshot*.jpeg
+**/Screenshot*.heic
+**/screenshot*.png
+**/screenshot*.jpg
+**/screenshot*.jpeg
+**/screenshot*.heic
+**/Screen\ Shot\ *.png
+**/Screen\ Shot\ *.jpg
+**/Screen\ Shot\ *.jpeg
+**/Screen\ Shot\ *.heic

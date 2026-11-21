@@ -122,8 +122,26 @@ int action_from_id(const std::string& id) {
 
 const char* pad_id(int p) { return p >= 0 && p < kPadCount ? kPads[p].id : ""; }
 const char* pad_label(int p) {
+    const PadFamily family = pad_family();
     static const char* const nintendo[] = {"B (bottom)", "A (right)", "Y (left)", "X (top)"};
-    if (p >= kPadA && p <= kPadY && pad_family() == PadFamily::kNintendo) return nintendo[p - kPadA];
+    static const char* const playstation[] = {"Cross (bottom)", "Circle (right)", "Square (left)", "Triangle (top)"};
+    if (p >= kPadA && p <= kPadY) {
+        if (family == PadFamily::kNintendo) return nintendo[p - kPadA];
+        if (family == PadFamily::kPlayStation) return playstation[p - kPadA];
+    }
+    if (family == PadFamily::kPlayStation) {
+        switch (p) {
+        case kPadLB: return "L1";
+        case kPadRB: return "R1";
+        case kPadLT: return "L2";
+        case kPadRT: return "R2";
+        case kPadMenu: return "Options";
+        case kPadHome: return "PS / Home";
+        case kPadL3: return "L3 (left stick click)";
+        case kPadR3: return "R3 (right stick click)";
+        default: break;
+        }
+    }
     return p > 0 && p < kPadCount ? kPads[p].label : "";
 }
 int pad_from_id(const std::string& id) {
@@ -361,10 +379,14 @@ int label_letter(FaceLabel l) {
 }
 
 FaceLabel word_letter(const std::string& w) {
-    if (w == "a" || w == "xmark" || w == "cross") return FaceLabel::kA;
-    if (w == "b" || w == "circle") return FaceLabel::kB;
-    if (w == "x" || w == "square") return FaceLabel::kX;
-    if (w == "y" || w == "triangle") return FaceLabel::kY;
+    if (w == "a") return FaceLabel::kA;
+    if (w == "b") return FaceLabel::kB;
+    if (w == "x") return FaceLabel::kX;
+    if (w == "y") return FaceLabel::kY;
+    if (w == "xmark" || w == "cross") return FaceLabel::kCross;
+    if (w == "circle") return FaceLabel::kCircle;
+    if (w == "square") return FaceLabel::kSquare;
+    if (w == "triangle") return FaceLabel::kTriangle;
     return FaceLabel::kUnknown;
 }
 }  // namespace
@@ -495,6 +517,24 @@ std::array<int, 4> hud_spots(const Mapping& m) {
         taken |= 1u << free;
     }
     return spots;
+PadFamily apple_pad_family(const char* product_category, const char* vendor_name, const FaceLabel labels[4]) {
+    auto lower = [](const char* text) {
+        std::string out;
+        for (const unsigned char* p = reinterpret_cast<const unsigned char*>(text ? text : ""); *p; ++p)
+            out.push_back((char)std::tolower(*p));
+        return out;
+    };
+    const std::string category = lower(product_category), vendor = lower(vendor_name);
+    auto has = [&](const char* token) { return category.find(token) != std::string::npos || vendor.find(token) != std::string::npos; };
+
+    // A profile can publish generic A/B labels even when the physical pad is a PlayStation model.
+    if (has("sony") || has("playstation") || has("dualsense") || has("dualshock"))
+        return PadFamily::kPlayStation;
+    if (apple_face_layout(product_category, vendor_name) == AppleFaceLayout::kNintendo)
+        return PadFamily::kNintendo;
+    if (has("xbox") || has("microsoft") || has("steam") || has("stadia") || has("luna"))
+        return PadFamily::kXbox;
+    return pad_family_from_labels(labels);
 }
 
 PromptStyle prompt_style(const Mapping& m, PadFamily family) {
@@ -700,8 +740,25 @@ std::string prompt_key_label(const Mapping& m, int action) {
 }
 
 const char* pad_short_label(int p) {
+    const PadFamily family = pad_family();
     static const char* const nintendo[] = {"B", "A", "Y", "X"};
-    if (p >= kPadA && p <= kPadY && pad_family() == PadFamily::kNintendo) return nintendo[p - kPadA];
+    static const char* const playstation[] = {"Cross", "Circle", "Square", "Triangle"};
+    if (p >= kPadA && p <= kPadY) {
+        if (family == PadFamily::kNintendo) return nintendo[p - kPadA];
+        if (family == PadFamily::kPlayStation) return playstation[p - kPadA];
+    }
+    if (family == PadFamily::kPlayStation) {
+        switch (p) {
+        case kPadLB: return "L1";
+        case kPadRB: return "R1";
+        case kPadLT: return "L2";
+        case kPadRT: return "R2";
+        case kPadMenu: return "Options";
+        case kPadOptions: return "View / Share";
+        case kPadHome: return "PS";
+        default: break;
+        }
+    }
     static const char* const kShort[kPadCount] = {
         "", "A", "B", "X", "Y", "LB", "RB", "LT", "RT", "Menu", "View", "Home", "L3", "R3",
         "D-pad ↑", "D-pad ↓", "D-pad ←", "D-pad →", "LS ↑", "LS ↓", "LS ←", "LS →", "RS ↑", "RS ↓", "RS ←", "RS →",
@@ -1550,8 +1607,8 @@ static uint32_t g_legacy_bit = 0;
 static std::mutex g_active_mu;
 static std::string g_active_guid, g_active_name;
 
-// the dominant pad's labels as note_face_labels last reported them (its own lock: set_current
-// takes g_mu)
+// the dominant pad's labels as last reported by either controller-label API (its own lock:
+// set_current takes g_mu)
 static std::mutex g_labels_mu;
 static FaceLabel g_labels[4] = {FaceLabel::kUnknown, FaceLabel::kUnknown, FaceLabel::kUnknown,
                                 FaceLabel::kUnknown};
@@ -1566,16 +1623,15 @@ void note_gamecube(bool detected) {
 }
 bool gamecube_pad() { return g_gamecube_pad.load(std::memory_order_relaxed); }
 
-void note_face_labels(const FaceLabel labels[4]) {
+static void update_controller_labels(const FaceLabel labels[4], PadFamily family, bool retain_unknown_family) {
     Mapping m = current();
     {
         std::lock_guard<std::mutex> lk(g_labels_mu);
         for (int i = 0; i < 4; i++) g_labels[i] = labels[i];
     }
-    // the prompts follow the family (button_glyphs re-reads the style on a new generation). An
-    // unplugged pad (all unknown) keeps the last family, as the Automatic face preset keeps its choice.
-    if (const PadFamily f = pad_family_from_labels(labels); f != PadFamily::kUnknown && f != pad_family()) {
-        g_family.store((int)f, std::memory_order_relaxed);
+    if (family == PadFamily::kUnknown && retain_unknown_family) family = pad_family();
+    if (family != pad_family()) {
+        g_family.store((int)family, std::memory_order_relaxed);
         g_gen++;
     }
     if (!m.face_auto) return;
@@ -1586,6 +1642,15 @@ void note_face_labels(const FaceLabel labels[4]) {
     if (!changed) return;
     for (int i = 0; i < 4; i++) m.pad[kA + i] = out[i];
     set_current(m);
+}
+
+void note_face_labels(const FaceLabel labels[4]) {
+    const PadFamily family = pad_family_from_labels(labels);
+    update_controller_labels(labels, family, true);
+}
+
+void note_controller_labels(const FaceLabel labels[4], PadFamily family, bool retain_unknown_family) {
+    update_controller_labels(labels, family, retain_unknown_family);
 }
 
 void set_face_auto(Mapping& m, bool on) {

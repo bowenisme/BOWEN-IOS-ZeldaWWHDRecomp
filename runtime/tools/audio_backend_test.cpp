@@ -120,6 +120,23 @@ namespace mods {
 bool fast_forward_mute() { return false; }
 } // namespace mods
 void log_msg(const char *, ...) {}
+static std::vector<int16_t> render_frames(uint32_t frames, int channels) {
+    std::vector<int16_t> out(size_t(frames) * channels);
+#if defined(__APPLE__) && !defined(WWHD_SDL_HOST)
+    AudioBufferList buffers{};
+    buffers.mNumberBuffers = 1;
+    buffers.mBuffers[0] = {UInt32(channels), UInt32(out.size() * sizeof(int16_t)), out.data()};
+    AudioUnitRenderActionFlags flags = 0;
+    AudioTimeStamp timestamp{};
+    callback.inputProc(&flags, &flags, &timestamp, 0, frames, &buffers);
+#else
+    received.clear();
+    callback(nullptr, reinterpret_cast<SDL_AudioStream *>(1), int(out.size() * sizeof(int16_t)), 0);
+    assert(received.size() == out.size());
+    out.swap(received);
+#endif
+    return out;
+}
 int main(int argc, char **argv) {
     assert(argc == 2);
     std::string mode = argv[1];
@@ -165,23 +182,62 @@ int main(int argc, char **argv) {
     AudioTimeStamp timestamp{};
     callback.inputProc(&flags, &flags, &timestamp, 0, 144, &buffers);
     assert(!memcmp(samples, out, 144 * n * 2));
-    audio::output_changed(0, 0, nullptr, nullptr);
-    if (n == 6) {
-        callback.inputProc(&flags, &flags, &timestamp, 0, 144, &buffers);
-        for (int16_t s : out)
-            assert(s == 0);
-        assert(audio::output_device_changed());
+    if (mode != "stale-queue") {
+        audio::output_changed(0, 0, nullptr, nullptr);
+        if (n == 6) {
+            callback.inputProc(&flags, &flags, &timestamp, 0, 144, &buffers);
+            for (int16_t s : out)
+                assert(s == 0);
+            assert(audio::output_device_changed());
+        }
     }
 #else
     callback(nullptr, reinterpret_cast<SDL_AudioStream *>(1), 144 * n * 2, 0);
     assert(received.size() == size_t(144 * n) && !memcmp(samples, received.data(), 144 * n * 2));
-    capacity = 2;
-    if (n == 6) {
-        received.clear();
-        callback(nullptr, reinterpret_cast<SDL_AudioStream *>(1), 144 * n * 2, 0);
-        for (auto s : received)
-            assert(s == 0);
-        assert(audio::output_device_changed());
+    if (mode != "stale-queue") {
+        capacity = 2;
+        if (n == 6) {
+            received.clear();
+            callback(nullptr, reinterpret_cast<SDL_AudioStream *>(1), 144 * n * 2, 0);
+            for (auto s : received)
+                assert(s == 0);
+            assert(audio::output_device_changed());
+        }
     }
 #endif
+    if (mode == "stale-queue") {
+        constexpr uint32_t queued = audio::kCapacity + 144;
+        std::vector<int16_t> backlog(size_t(queued) * n);
+        for (uint32_t i = 0; i < queued; ++i)
+            for (int ch = 0; ch < n; ++ch)
+                backlog[i * n + ch] = int16_t(1000 + i % 1000 + ch * 100);
+        audio::push(backlog.data(), queued);
+        assert(audio::buffered_frames() == audio::kCapacity);
+
+        auto resumed = render_frames(144, n);
+        uint64_t underrun = 0, dropped = 0;
+        audio::stats(underrun, dropped);
+        assert(underrun == 0 && dropped == queued - audio::kTarget);
+        assert(audio::buffered_frames() == audio::kTarget - 144);
+        const int latest = 1000 + (audio::kCapacity - audio::kTarget + 143) % 1000;
+        assert(resumed[143 * n] == latest * 144 / (audio::kRate / 200)); // newest 40 ms, faded in
+
+        render_frames(audio::kTarget, n);
+        audio::stats(underrun, dropped);
+        assert(underrun == 144 && dropped == queued - audio::kTarget);
+        for (int i = 0; i < 144; ++i)
+            for (int ch = 0; ch < n; ++ch)
+                backlog[i * n + ch] = ch & 1 ? -12000 : 12000;
+        audio::push(backlog.data(), 144);
+        auto recovered = render_frames(144, n);
+        assert(recovered.front() == 50 && recovered[143 * n] == 7200 && recovered[143 * n + 1] == -7200);
+
+        audio::flush();
+        audio::push(backlog.data(), 144);
+        auto flushed = render_frames(144, n);
+        assert(flushed[1] < 0 && flushed.back() == 0);
+        audio::push(backlog.data(), 144);
+        auto after_flush = render_frames(144, n);
+        assert(after_flush.front() == 50 && after_flush[143 * n] == 7200 && after_flush[143 * n + 1] == -7200);
+    }
 }

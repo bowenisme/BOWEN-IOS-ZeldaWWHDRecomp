@@ -431,10 +431,67 @@ static void test_prompts() {
     const FL ps[4] = {FL::kCross, FL::kCircle, FL::kSquare, FL::kTriangle};
     const FL nintendo[4] = {FL::kB, FL::kA, FL::kY, FL::kX};
     const FL none[4] = {FL::kUnknown, FL::kUnknown, FL::kUnknown, FL::kUnknown};
+    const FL generic[4] = {FL::kA, FL::kB, FL::kX, FL::kY};
     CHECK(pad_family_from_labels(xbox) == PadFamily::kXbox);
     CHECK(pad_family_from_labels(ps) == PadFamily::kPlayStation);
     CHECK(pad_family_from_labels(nintendo) == PadFamily::kNintendo);
     CHECK(pad_family_from_labels(none) == PadFamily::kUnknown);
+    CHECK(apple_pad_family("DualSense Wireless Controller", "Sony Interactive Entertainment", generic) == PadFamily::kPlayStation);
+    CHECK(apple_pad_family("DualShock 4", "Sony", generic) == PadFamily::kPlayStation);
+    CHECK(apple_pad_family("ExtendedGamepad", "Unknown Vendor", ps) == PadFamily::kPlayStation);
+    CHECK(apple_pad_family("Xbox Wireless Controller", "Microsoft", generic) == PadFamily::kXbox);
+    CHECK(apple_pad_family("Switch Pro Controller", "Nintendo", generic) == PadFamily::kNintendo);
+    CHECK(apple_pad_family("ExtendedGamepad", "Unknown Vendor", none) == PadFamily::kUnknown);
+
+    // An explicit PS profile selects PS prompts even when its buttons have generic letter names;
+    // this metadata update must not rewrite a manual position/label mapping.
+    const Mapping manual = Mapping::defaults();
+    set_current(manual, false);
+    note_controller_labels(generic, PadFamily::kPlayStation);
+    CHECK(pad_family() == PadFamily::kPlayStation && current() == manual);
+    CHECK(std::string(pad_label(kPadA)) == "Cross (bottom)");
+    CHECK(std::string(pad_label(kPadB)) == "Circle (right)");
+    CHECK(std::string(pad_short_label(kPadX)) == "Square");
+    CHECK(std::string(pad_short_label(kPadY)) == "Triangle");
+    CHECK(std::string(pad_label(kPadLB)) == "L1" && std::string(pad_label(kPadLT)) == "L2");
+    CHECK(std::string(pad_short_label(kPadRB)) == "R1" && std::string(pad_short_label(kPadRT)) == "R2");
+    CHECK(std::string(pad_short_label(kPadMenu)) == "Options");
+
+    // Automatic glyph family follows the active controller; a no-pad report restores the existing
+    // unknown-family fallback without changing the user's button mapping.
+    Mapping by_label = manual;
+    apply_face_layout(by_label, FaceLayout::kLabels);
+    CHECK(prompt_style(manual, pad_family()).face == FaceStyle::kPlayStation);
+    CHECK(prompt_style(by_label, pad_family()).face == FaceStyle::kPlayStation);
+    CHECK((prompt_style(manual, pad_family()).buttons == std::array<int, 4>{1, 0, 3, 2}));
+    CHECK((prompt_style(by_label, pad_family()).buttons == std::array<int, 4>{0, 1, 2, 3}));
+    CHECK(face_input(kA) == kPadB && face_input(kB) == kPadA);  // position mapping stays position-based
+    set_current(by_label, false);
+    CHECK(face_input(kA) == kPadA && face_input(kB) == kPadB);  // by-label confirmation stays label-based
+    const uint32_t before_disconnect = generation();
+    note_controller_labels(none, PadFamily::kUnknown, true);  // production desktop disconnect semantics
+    CHECK(pad_family() == PadFamily::kPlayStation && generation() == before_disconnect);
+    CHECK(current() == by_label);
+    note_controller_labels(none, PadFamily::kUnknown);
+    CHECK(pad_family() == PadFamily::kUnknown && generation() != before_disconnect);
+    CHECK(current() == by_label && prompt_style(by_label, pad_family()).face == FaceStyle::kXbox);
+    Mapping fixed_ps = by_label;
+    fixed_ps.prompts = Mapping::Prompts::kPlayStation;
+    CHECK(prompt_style(fixed_ps, pad_family()).face == FaceStyle::kPlayStation);
+    note_controller_labels(xbox, apple_pad_family("Xbox Wireless Controller", "Microsoft", xbox));
+    CHECK(pad_family() == PadFamily::kXbox && prompt_style(by_label, pad_family()).face == FaceStyle::kXbox);
+    note_controller_labels(nintendo, apple_pad_family("Switch Pro Controller", "Nintendo", nintendo));
+    CHECK(pad_family() == PadFamily::kNintendo && prompt_style(manual, pad_family()).face == FaceStyle::kOriginal);
+    CHECK(std::string(pad_label(kPadA)) == "B (bottom)");  // existing Nintendo naming remains
+
+    // PS-specific button names preserve the semantic mapping while exposing the physical family.
+    const FL ps_symbols[4] = {face_label_from_text("xmark.circle"), face_label_from_text("circle.circle"),
+                              face_label_from_text("square.circle"), face_label_from_text("triangle.circle")};
+    CHECK(ps_symbols[0] == FL::kCross && ps_symbols[1] == FL::kCircle &&
+          ps_symbols[2] == FL::kSquare && ps_symbols[3] == FL::kTriangle);
+    int ps_buttons[4] = {};
+    CHECK(face_bindings_from_labels(ps_symbols, ps_buttons));
+    CHECK(ps_buttons[0] == kPadA && ps_buttons[1] == kPadB && ps_buttons[2] == kPadX && ps_buttons[3] == kPadY);
 
     Mapping m = Mapping::defaults();
     CHECK(m.prompts == Mapping::Prompts::kAuto && m.shoulder_names == Mapping::ShoulderNames::kAuto && m.prompt_colours && m.prompt_text_colours);
@@ -603,21 +660,21 @@ static void test_face_label_text() {
     CHECK(face_label_from_text("x.circle") == FL::kX);
     CHECK(face_label_from_text("y.circle") == FL::kY);
     CHECK(face_label_from_text("a.circle.fill") == FL::kA);
-    CHECK(face_label_from_text("xmark.circle") == FL::kA);       // PlayStation Cross
-    CHECK(face_label_from_text("xmark.circle.fill") == FL::kA);
-    CHECK(face_label_from_text("circle.circle") == FL::kB);      // PlayStation Circle
-    CHECK(face_label_from_text("circle") == FL::kB);
-    CHECK(face_label_from_text("square.circle") == FL::kX);      // PlayStation Square, not Circle
-    CHECK(face_label_from_text("square.circle.fill") == FL::kX);
-    CHECK(face_label_from_text("square.fill") == FL::kX);
-    CHECK(face_label_from_text("triangle.circle") == FL::kY);
-    CHECK(face_label_from_text("triangle") == FL::kY);
+    CHECK(face_label_from_text("xmark.circle") == FL::kCross);       // PlayStation Cross
+    CHECK(face_label_from_text("xmark.circle.fill") == FL::kCross);
+    CHECK(face_label_from_text("circle.circle") == FL::kCircle);     // PlayStation Circle
+    CHECK(face_label_from_text("circle") == FL::kCircle);
+    CHECK(face_label_from_text("square.circle") == FL::kSquare);     // PlayStation Square, not Circle
+    CHECK(face_label_from_text("square.circle.fill") == FL::kSquare);
+    CHECK(face_label_from_text("square.fill") == FL::kSquare);
+    CHECK(face_label_from_text("triangle.circle") == FL::kTriangle);
+    CHECK(face_label_from_text("triangle") == FL::kTriangle);
     CHECK(face_label_from_text("x.square.fill") == FL::kX);      // letter in a square, not Square
     // localized names and vendor-style names: the one word that is a letter
     CHECK(face_label_from_text("Button A") == FL::kA);
     CHECK(face_label_from_text("Button B") == FL::kB);
-    CHECK(face_label_from_text("Cross Button") == FL::kA);
-    CHECK(face_label_from_text("Circle Button") == FL::kB);
+    CHECK(face_label_from_text("Cross Button") == FL::kCross);
+    CHECK(face_label_from_text("Circle Button") == FL::kCircle);
     CHECK(face_label_from_text("xbox.button.a") == FL::kA);
     CHECK(face_label_from_text("xbox.button.y") == FL::kY);
     CHECK(face_label_from_text("X Button") == FL::kX);

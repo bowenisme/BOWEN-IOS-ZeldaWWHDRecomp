@@ -198,8 +198,9 @@ enum class FaceLabel { kUnknown, kA, kB, kX, kY, kCross, kCircle, kSquare, kTria
 // The letter one button has printed on it, from the name a host gives it: an SF Symbol name
 // ("a.circle", "xmark.circle", "square.circle.fill", "x.square.fill") or a localized name
 // ("Button A", "Cross Button"). The first dot-separated component is the symbol's own name and
-// what follows is decoration — so "square.circle" is Square (X) and not Circle (B) — and words
-// like "button" are ignored in a free-form name. kUnknown when the name says nothing.
+// what follows is decoration — so "square.circle" is Square (X) and not Circle (B). PS names
+// remain distinct (Cross/Circle/Square/Triangle), while words like "button" are ignored in a
+// free-form name. kUnknown when the name says nothing.
 FaceLabel face_label_from_text(const char* text);
 
 // GameController's Nintendo face elements use printed letters, unlike our positional Pad
@@ -229,14 +230,21 @@ void note_face_labels(const FaceLabel labels[4]);
 // reported the bindings stay as they are. apply_face_layout turns it off: a preset is a choice.
 void set_face_auto(Mapping& m, bool on);
 
-// The dominant pad's family, from the labels note_face_labels last reported: PlayStation when it
-// names Cross/Circle/Square/Triangle, Xbox when its bottom button is A, Nintendo when it is B.
+// Family used for automatic prompt styling and controller labels. Label-only hosts infer it from
+// FaceLabel values; Apple hosts can prefer the profile/vendor family over generic button labels.
 enum class PadFamily { kUnknown, kXbox, kPlayStation, kNintendo };
 // The dominant device GameCube-adapter identity, separate from its face labels.
 void note_gamecube(bool detected);
 bool gamecube_pad();
 PadFamily pad_family_from_labels(const FaceLabel labels[4]);
+// Resolve a GameController profile/vendor independently from generic A/B/X/Y button labels.
+// Specific profile/vendor data wins; explicit face labels are the fallback.
+PadFamily apple_pad_family(const char* product_category, const char* vendor_name, const FaceLabel labels[4]);
 PadFamily pad_family();
+// Hosts that know the active controller profile should report both parts together. An explicit
+// kUnknown clears the family unless retain_unknown_family is true (the desktop disconnect rule).
+// This changes prompt/label selection only; it does not change the face binding preset.
+void note_controller_labels(const FaceLabel labels[4], PadFamily family, bool retain_unknown_family = false);
 
 // What the in-game button prompts look like (button_glyphs.cpp draws it). Resolved from the
 // mapping and the pad family; pure, so input_map_test and button_glyphs_test can cover it.

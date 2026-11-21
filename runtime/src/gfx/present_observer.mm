@@ -3,7 +3,9 @@
 #include "platform/present_observer.h"
 #include "platform/present_deadline_core.h"
 #include "platform/present_observer_core.h"
+#ifndef WWHD_IOS
 #import <AppKit/AppKit.h>
+#endif
 #import <QuartzCore/CAMetalLayer.h>
 #import <QuartzCore/QuartzCore.h>
 #include <atomic>
@@ -318,6 +320,7 @@ void google_history(uint64_t epoch, uint32_t id, uint64_t frame,
 @end
 
 namespace present_observer {
+#ifndef WWHD_IOS  // AppKit windows only; the iOS host owns its CAMetalLayer (platform/ios/host.mm)
 CAMetalLayer *make_layer(NSWindow *window) {
   if (!enabled())
     return [CAMetalLayer layer];
@@ -349,6 +352,7 @@ CAMetalLayer *make_layer(NSWindow *window) {
   }
   return layer;
 }
+#endif
 void flush() {
   if (!enabled())
     return;

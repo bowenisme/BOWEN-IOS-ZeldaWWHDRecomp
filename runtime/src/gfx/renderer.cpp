@@ -336,7 +336,7 @@ void shutdown() {
 }
 
 bool can_restart() {
-#if defined(_WIN32) || defined(__ANDROID__)
+#if defined(_WIN32) || defined(__ANDROID__) || defined(WWHD_IOS)
     return false;
 #else
     return !g_args.empty();
@@ -344,7 +344,7 @@ bool can_restart() {
 }
 
 bool restart() {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(WWHD_IOS)
     return false;
 #else
     std::string exe;

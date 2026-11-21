@@ -77,6 +77,7 @@ struct Renderer {
 
     id<MTLCommandBuffer> cmd = nil;
     id<MTLRenderCommandEncoder> enc = nil;
+    id<MTLBlitCommandEncoder> blit = nil;
     bool binding = false;  // a draw is binding its textures to the open encoder (no blits now)
     // attachments of the open render encoder
     Surface* passColor[8] = {};
@@ -105,9 +106,14 @@ struct Renderer {
     uint64_t drawCount = 0;
 };
 extern Renderer R;
+// Mobile HUD: cumulative command-buffer intervals, independent of the log's resettable counter.
+extern std::atomic<bool> g_gpu_metrics;
+extern std::atomic<uint64_t> g_gpu_total_ns;
 
 // command buffer / encoder management
 id<MTLCommandBuffer> command_buffer();
+// Consecutive copies share a pass; end_encoder closes it before any draw, readback or commit.
+id<MTLBlitCommandEncoder> blit_encoder();
 void end_encoder();
 void gamepad_backdrop_scope(const uint32_t*, bool begin);
 void gamepad_backdrop_scan(Surface*);
@@ -115,6 +121,7 @@ void gamepad_backdrop_clear(Surface*);
 void gamepad_backdrop_reset();
 void gamepad_backdrop_maintain(); // once per presentation: release idle captures
 
+void dump_texture(id<MTLTexture>,const char*,bool,bool);
 
 // guest memory -> (buffer, offset); returns nil if the address is not GPU-visible
 id<MTLBuffer> guest_buffer(uint32_t addr, uint32_t* offset);

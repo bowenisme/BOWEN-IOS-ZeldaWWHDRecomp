@@ -240,10 +240,29 @@ inline Next next_pass(int phase, int n, int64_t elapsed, int64_t pass, int64_t b
 // in-between pass of all) replaces the estimate: the scene may be lighter now. One that hit a hitch
 // (more than twice the estimate) counts twice the estimate and asks for another probe soon
 // (retry): at the start the first in-between pass met one (90-200 ms, measured here and in the
-// #164 report) and kept in-between frames out until the next probe 10 s later.
+// #164 report) and kept in-between frames out until the next scheduled probe.
 inline int64_t probe_estimate(int64_t avg, int64_t pass, bool& retry) {
     retry = avg > 0 && pass > 2 * avg;
     return retry ? 2 * avg : pass;
+}
+
+// iOS at 60 Hz rechecks a dropped in-between frame quickly; other rates keep the 10 s interval.
+inline int64_t probe_after_ns(int output_fps, bool ios) {
+    return ios && output_fps == 60 ? 1'000'000'000LL : 10'000'000'000LL;
+}
+
+// A quick retry scheduled in iOS 60 Hz mode should not leak into another output mode.
+inline bool probe_retry_active(bool pending, bool from_ios60, bool ios60) {
+    return pending && (!from_ios60 || ios60);
+}
+
+// A hitch gets one quick retry. If a 60 Hz iOS retry confirms a persistently slow pass, use the
+// normal 10 s interval to limit the cost of repeatedly drawing a slow in-between frame.
+inline int64_t probe_retry_after_ns(bool hitch, int64_t pass, int64_t tick, bool ios60, bool retry_probe) {
+    const bool slow = pass > tick + tick / 2;
+    if (ios60 && retry_probe && (hitch || slow)) return 10'000'000'000LL;
+    if (hitch) return 1'000'000'000LL;
+    return ios60 && slow ? 5'000'000'000LL : 0;
 }
 
 // Next::kRecord (not all passes left fit): the phase the step goes on from, so that the next hold

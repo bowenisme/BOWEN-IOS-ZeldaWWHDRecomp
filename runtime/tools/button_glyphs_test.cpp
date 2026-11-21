@@ -1113,9 +1113,13 @@ void options_test() {
 
     // Automatic picks the shapes for a PlayStation pad, the Xbox look for any other
     using FL = input_map::FaceLabel;
-    const FL ps[4] = {FL::kCross, FL::kCircle, FL::kSquare, FL::kTriangle};
+    // A real system profile can report generic A/B/X/Y labels; its profile/vendor still selects PS art.
+    const FL ps[4] = {FL::kA, FL::kB, FL::kX, FL::kY};
     const FL xbox[4] = {FL::kA, FL::kB, FL::kX, FL::kY};
-    input_map::note_face_labels(ps);
+    const auto ps_family = input_map::apple_pad_family("DualSense Wireless Controller", "Sony", ps);
+    assert(ps_family == input_map::PadFamily::kPlayStation);
+    input_map::note_controller_labels(ps, ps_family);
+    assert(input_map::pad_family() == input_map::PadFamily::kPlayStation);
     set_options(F::kLabels, P::kAuto, N::kAuto, true);
     assert(expect_shapes == 1 && expect_names == 1);
     st16(list + 4, 0); st8(list + 6, 0);

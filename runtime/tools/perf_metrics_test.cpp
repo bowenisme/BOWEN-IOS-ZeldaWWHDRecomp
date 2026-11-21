@@ -69,5 +69,30 @@ int main() {
     perf::game_frame(); perf::render_frame(); assert(perf::gpu_begin(80) == 0);
     assert(perf::counters().cpu_reads == before.cpu_reads);
     assert(perf::counters().gpu_submissions == before.gpu_submissions);
-    std::cout << "perf_metrics: formatting, rolling averages, deferred GPU sums, reactivation, hidden counters PASS\n";
+    // Native HUD survives per-frame desktop updates; handing demand between sources
+    // must preserve CPU baselines, rolling averages, and pending GPU completions.
+    perf::set_host_demand(true);
+    const auto hostGeneration=perf::generation();
+    perf::game_frame(); cpu+=2000000; perf::game_frame();
+    token=perf::gpu_begin(100);
+    for(int i=0;i<100;++i)perf::set_demand(false,false);
+    assert(perf::enabled() && perf::generation()==hostGeneration);
+    assert(perf::snapshot().game.current==2);
+    perf::set_demand(true,false);
+    perf::set_host_demand(false);
+    assert(perf::enabled() && perf::generation()==hostGeneration);
+    perf::gpu_complete(100,token,4000000); perf::gpu_advance(101);
+    assert(perf::snapshot().gpu.current==4);
+    perf::set_host_demand(true);
+    perf::set_demand(false,true);
+    perf::set_demand(false,false);
+    assert(perf::enabled() && perf::generation()==hostGeneration);
+    cpu+=3000000; perf::game_frame();
+    assert(perf::snapshot().game.current==3 && perf::snapshot().game.average()==2.5);
+    perf::set_host_demand(false);
+    assert(!perf::enabled() && perf::generation()!=hostGeneration);
+    before=perf::counters();
+    perf::game_frame(); assert(perf::gpu_begin(102)==0);
+    assert(perf::counters().cpu_reads==before.cpu_reads);
+    std::cout << "perf_metrics: formatting, rolling averages, deferred GPU sums, reactivation, hidden counters, independent host/overlay/report demand PASS\n";
 }

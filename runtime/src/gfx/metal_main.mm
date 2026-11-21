@@ -5,7 +5,11 @@
 #include "interp.h"
 #include "gfx/depth_peek.h"
 // Metal renderer: device, window, presentation, clears and copies.
+#ifdef WWHD_IOS
+#import <Foundation/Foundation.h>
+#else
 #import <AppKit/AppKit.h>
+#endif
 #import <ImageIO/ImageIO.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
@@ -181,6 +185,8 @@ id<MTLCommandBuffer> command_buffer() {
 
 uint32_t g_draws_since_commit = 0;
 std::atomic<uint64_t> g_gpu_ns{0};  // GPU busy time, for the periodic report
+std::atomic<bool> g_gpu_metrics{false};      // iOS performance overlay: time every command buffer
+std::atomic<uint64_t> g_gpu_total_ns{0};
 
 // dynamic resolution (dynres.h): every command buffer's GPU interval while it is on
 static void dynres_time(id<MTLCommandBuffer> cb) {
@@ -206,10 +212,13 @@ static void track_gpu_time(id<MTLCommandBuffer> cb) {
         }
         if (!stored) perf::gpu_complete(frame, token, -1); // bounded storage; omit partial frames
     }
-    if (!diagnostic) return;
+    if (!diagnostic && !g_gpu_metrics.load(std::memory_order_relaxed)) return;
     [cb addCompletedHandler:^(id<MTLCommandBuffer> b) {
         double t = b.GPUEndTime - b.GPUStartTime;
-        if (t > 0) g_gpu_ns += (uint64_t)(t * 1e9);
+        if (t > 0) {
+            g_gpu_ns += (uint64_t)(t * 1e9);
+            g_gpu_total_ns += (uint64_t)(t * 1e9);  // iOS performance overlay (never reset)
+        }
     }];
 }
 
@@ -272,7 +281,9 @@ void init() {
     LOG("[gfx] Metal device: %s", R.device.name.UTF8String);
 }
 
+#ifndef WWHD_IOS
 void run_main_loop() { [NSApp run]; }
+#endif
 
 // the MTLDevice's name, for reports (renderer.h Backend::device); "" before init
 std::string device_name() { return R.device ? std::string(R.device.name.UTF8String) : std::string(); }

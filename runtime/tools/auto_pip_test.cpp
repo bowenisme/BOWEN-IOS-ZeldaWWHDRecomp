@@ -10,6 +10,9 @@ static gfx::PresentPlan frame() {
 }
 int main() {
     using namespace gfx;
+    float x=0,y=0,w=0,h=0;
+    bool fullscreen=true;
+    assert(!gamepad_picture(&x,&y,&w,&h,&fullscreen) && !fullscreen);
     AutoPipDecision decision;
     GamePadUiState play{true, false, false, false}, menu{true, true, false, false};
     assert(!decision.shown(play, false, 0));
@@ -104,6 +107,18 @@ int main() {
         assert(before.pip_on == after.pip_on && before.drc_only == after.drc_only && before.drc_window == after.drc_window);
     }
     // Optional pause view preserves the saved view and respects a manual choice.
+    // iPhone/iPad have no separate GamePad window: the exchange prompt must remain reachable.
+    display_set_mode(kDrcAuto);
+    display_gamepad_ui({true,false,false,true});
+    g_drc_during_switch=false;
+    assert(!frame().pip_on);
+    g_drc_during_switch=true;
+    assert(frame().pip_on);
+    display_gamepad_ui({true,false,true,true});
+    assert(frame().drc_only);
+    display_set_mode(kDrcGamePad);
+    assert(frame().drc_only); // manual recovery works independently of automatic detection
+    g_drc_during_switch=false;
     if (getenv("WWHD_DRC_PAUSE")) {
         display_set_mode(kDrcOff);
         display_plus_pressed();
@@ -117,5 +132,23 @@ int main() {
         assert(g_mode == kDrcPip && display_saved_mode() == kDrcPip);
         display_set_mode(kDrcAuto); display_plus_pressed(); display_gamepad_ui(menu);
         assert(g_mode == kDrcAuto && frame().pip_on && !frame().drc_only);
+    }
+    // Touch controls and the GamePad must agree on the compositor's rectangle, not safe-area guesses.
+    for (bool full : {false,true}) {
+        PresentPlan p{};
+        p.dw=1200; p.dh=800; p.pip_on=true; p.drc_only=full;
+        p.pip=full?Box{0,60,1200,680}:Box{900,600,300,180};
+        display_input_plan(p);
+        assert(gamepad_picture(&x,&y,&w,&h,&fullscreen) && fullscreen==full);
+        assert(x==p.pip.x/p.dw && y==p.pip.y/p.dh && w==p.pip.w/p.dw && h==p.pip.h/p.dh);
+        float tx,ty;
+        assert(overlay_hit(x+w*.5f,y+h*.5f,&tx,&ty));
+        assert(std::abs(tx-.5f)<.0001f && std::abs(ty-.5f)<.0001f);
+        p.pip_on=false;
+        display_input_plan(p);
+        assert(!gamepad_picture(&x,&y,&w,&h,&fullscreen) && !fullscreen);
+        p.pip_on=true; p.dw=0;
+        display_input_plan(p);
+        assert(!gamepad_picture(&x,&y,&w,&h,&fullscreen));
     }
 }

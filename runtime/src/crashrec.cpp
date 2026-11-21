@@ -162,7 +162,7 @@ void service() {
             if (g_play) fclose(g_play);
             g_play = nullptr;
         }
-        ss::request_load(kAutoBase + g_replay);
+        ss::internal::request_auto_load(g_replay);
     }
     if (!on) return;
     auto now = std::chrono::steady_clock::now();
@@ -173,7 +173,10 @@ void service() {
     }
     if (!g_save_pending && now - g_last_save >= std::chrono::seconds(interval_seconds())) {
         g_save_pending = true;
-        ss::request_save(kAutoBase + g_next);
+        if (!ss::internal::request_auto_save(g_next)) {
+            g_save_pending = false;
+            g_last_save = now;
+        }
     }
 }
 
@@ -247,7 +250,7 @@ AutoInfo auto_info(int n) {
     return a;
 }
 
-void request_load(int n) { ss::request_load(kAutoBase + n); }
+void request_load(int n) { ss::internal::request_auto_load(n); }
 
 void crash_note(int fd, void (*out)(int, const char*, size_t)) {
     out(fd, g_note, strnlen(g_note, sizeof g_note));

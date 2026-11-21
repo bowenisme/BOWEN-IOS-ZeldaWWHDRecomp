@@ -12,14 +12,31 @@ inline bool memory_chunk_zero(const uint8_t* p) {
 }
 template<class Pointer,class Touched>
 void capture_regions(Writer& w,const std::vector<MemoryRegion>& regions,Pointer ptr,Touched touched) {
-    w.u32(uint32_t(regions.size()));
-    for(const auto& g:regions) {
-        w.u32(g.base);w.u32(g.size);size_t count_at=w.b.size();w.u32(0);uint32_t present=0;
-        for(uint32_t off=0;off<g.size;off+=kMemoryChunk){
-            const uint8_t* p=ptr(g.base+off);if(!touched(p,kMemoryChunk))continue;
-            if(memory_chunk_zero(p))continue;w.u32(off/kMemoryChunk);w.bytes(p,kMemoryChunk);++present;
+    // The game is quiescent: count sparse chunks before allocating, avoiding a doubling
+    // reallocation that temporarily holds both multi-hundred-MB payloads on mobile.
+    std::vector<std::vector<uint32_t>> selected(regions.size());
+    size_t bytes=4+regions.size()*12;
+    for(size_t i=0;i<regions.size();++i) {
+        const auto& g=regions[i];
+        for(uint32_t off=0;off<g.size;off+=kMemoryChunk) {
+            const uint8_t* p=ptr(g.base+off);
+            if(touched(p,kMemoryChunk)&&!memory_chunk_zero(p)) {
+                selected[i].push_back(off/kMemoryChunk);
+                bytes+=4+kMemoryChunk;
+            }
         }
-        memcpy(w.b.data()+count_at,&present,sizeof present);
+    }
+#ifdef WWHD_IOS
+    fprintf(stderr,"[savestate] sparse payload %.1f MiB, prefix %.1f MiB\n",bytes/1048576.0,w.b.size()/1048576.0);
+#endif
+    w.b.reserve(w.b.size()+bytes);
+    w.u32(uint32_t(regions.size()));
+    for(size_t i=0;i<regions.size();++i) {
+        const auto& g=regions[i];
+        w.u32(g.base);w.u32(g.size);w.u32(uint32_t(selected[i].size()));
+        for(uint32_t index:selected[i]) {
+            w.u32(index);w.bytes(ptr(g.base+index*kMemoryChunk),kMemoryChunk);
+        }
     }
 }
 // Only page indices are retained; bytes are read while the guest stays frozen.

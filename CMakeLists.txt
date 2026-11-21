@@ -4,9 +4,15 @@ project(wwhd_recomp C CXX)
 #   BOTH   (macOS default) Metal and Vulkan (MoltenVK) in one app; Graphics > Renderer picks one at start
 #   METAL  Metal only (macOS)
 #   VULKAN Vulkan only, with the portable SDL3 host (default on other platforms)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  set(WWHD_IOS ON)
+  add_compile_definitions(WWHD_IOS=1)
+endif()
 set(WWHD_RENDERER "" CACHE STRING "Graphics backends: BOTH, METAL or VULKAN")
 if(NOT WWHD_RENDERER)
-  if(APPLE)
+  if(WWHD_IOS)
+    set(WWHD_RENDERER METAL)
+  elseif(APPLE)
     set(WWHD_RENDERER BOTH)
   else()
     set(WWHD_RENDERER VULKAN)
@@ -16,6 +22,9 @@ string(TOUPPER "${WWHD_RENDERER}" WWHD_RENDERER)
 set_property(CACHE WWHD_RENDERER PROPERTY STRINGS BOTH METAL VULKAN)
 if(NOT WWHD_RENDERER MATCHES "^(BOTH|METAL|VULKAN)$")
   message(FATAL_ERROR "WWHD_RENDERER must be BOTH, METAL or VULKAN")
+endif()
+if(WWHD_IOS AND NOT WWHD_RENDERER STREQUAL "METAL")
+  message(FATAL_ERROR "The iPad host requires WWHD_RENDERER=METAL")
 endif()
 set(WWHD_HAS_METAL OFF)
 set(WWHD_HAS_VULKAN OFF)
@@ -268,6 +277,15 @@ if(WWHD_HAS_METAL)
   # Metal renderer and the AppKit host (windows, menus, input, controls window, display modes)
   file(GLOB METAL_SOURCES CONFIGURE_DEPENDS runtime/src/gfx/*.mm)
   file(GLOB MOD_GFX_SOURCES CONFIGURE_DEPENDS runtime/src/mods/*.mm)
+  if(WWHD_IOS)
+    # iPhone/iPad: the UIKit host replaces the AppKit windows, menus and dialogs
+    list(FILTER METAL_SOURCES EXCLUDE REGEX "/(display|controls_ui|menu|overlay_appkit|quit_prompt|text_input_appkit)\\.mm$")
+    list(FILTER MOD_GFX_SOURCES EXCLUDE REGEX "/mouse\\.mm$")
+    list(APPEND METAL_SOURCES ${CMAKE_SOURCE_DIR}/runtime/src/platform/ios/host.mm
+                              ${CMAKE_SOURCE_DIR}/runtime/src/platform/ios/controls.mm
+                              ${CMAKE_SOURCE_DIR}/runtime/src/platform/ios/touch_controls.mm)
+    list(APPEND GFX_SOURCES ${CMAKE_SOURCE_DIR}/runtime/src/platform/ios/savestate_ios.cpp)
+  endif()
   list(APPEND GFX_SOURCES ${METAL_SOURCES} runtime/src/platform/mic_apple.mm)  # (the microphone for code mods, mic.h)
   set_source_files_properties(${METAL_SOURCES} ${MOD_GFX_SOURCES} runtime/src/platform/mic_apple.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
   # the settings overlay's Metal renderer (with guest HUD blend markers)
@@ -331,7 +349,7 @@ endif()
 target_link_libraries(wwhd PRIVATE gamecode cemu_latte wwhd_gcmodel imgui ZLIB::ZLIB Threads::Threads)
 # the macOS AppKit host's optional generic-HID reader (WWHD_HAS_IOKIT, declared with the other
 # options): the mapping is platform/hid_gamepad.cpp and gfx/input.mm is the reader.
-if(APPLE AND NOT WWHD_SDL_HOST AND WWHD_HAS_IOKIT)
+if(APPLE AND NOT WWHD_SDL_HOST AND WWHD_HAS_IOKIT AND NOT WWHD_IOS)
   target_sources(wwhd PRIVATE runtime/src/platform/hid_gamepad.cpp)
   target_compile_definitions(wwhd PRIVATE WWHD_HAS_IOKIT=1)
   target_link_libraries(wwhd PRIVATE "-framework IOKit")
@@ -360,7 +378,12 @@ else()
 endif()
 if(WWHD_HAS_METAL)
   target_compile_definitions(wwhd PRIVATE WWHD_HAS_METAL=1)
-  target_link_libraries(wwhd PRIVATE "-framework Metal" "-framework QuartzCore" "-framework AppKit" "-framework Foundation" "-framework ImageIO" "-framework UniformTypeIdentifiers" "-framework GameController" "-framework CoreHaptics" "-framework Carbon" "-framework AudioToolbox" "-framework CoreAudio" "-framework AVFoundation" compression)
+  if(WWHD_IOS)
+    target_link_libraries(wwhd PRIVATE "-framework UIKit" "-framework MetalFX" "-framework CoreText")
+  else()
+    target_link_libraries(wwhd PRIVATE "-framework AppKit" "-framework Carbon" "-framework CoreAudio")
+  endif()
+  target_link_libraries(wwhd PRIVATE "-framework Metal" "-framework QuartzCore" "-framework CoreGraphics" "-framework Foundation" "-framework ImageIO" "-framework UniformTypeIdentifiers" "-framework GameController" "-framework CoreHaptics" "-framework AudioToolbox" "-framework AVFoundation" compression)
 endif()
 if(WWHD_HAS_VULKAN)
   include(cmake/PipelineRuntimeIdentity.cmake)
@@ -421,6 +444,40 @@ if(WWHD_SDL_HOST)
       target_link_libraries(wwhd PRIVATE ${LZ4_LIBRARY} ${CMAKE_DL_LIBS})
     endif()
   endif()
+endif()
+
+if(WWHD_IOS)
+  set(WWHD_IOS_BUNDLE_ID "org.wwhdrecomp.ios" CACHE STRING "iPhone/iPad bundle identifier for your signing team")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/ios/Info.plist.in")
+  set(WWHD_IOS_ICON_DIR "${CMAKE_SOURCE_DIR}/ios/icons" CACHE PATH "Optional local iOS app icons")
+  # Direct PNG resources avoid booting AssetCatalogSimulatorAgent on the build Mac.
+  file(GLOB WWHD_IOS_ICONS CONFIGURE_DEPENDS "${WWHD_IOS_ICON_DIR}/*.png")
+  if(WWHD_IOS_ICONS)
+    set(WWHD_IOS_ICON_NAMES "<string>AppIcon20</string><string>AppIcon29</string><string>AppIcon40</string><string>AppIcon60</string><string>AppIcon76</string><string>AppIcon83_5</string><string>AppIcon1024</string>")
+  else()
+    # Public checkouts use the upstream project's original, licensed sailing-boat artwork.
+    set(WWHD_IOS_ICONS android/icon/app_icon_1024.png)
+    set(WWHD_IOS_ICON_NAMES "<string>app_icon_1024</string>")
+  endif()
+  set(WWHD_IOS_RESOURCES
+    ${WWHD_IOS_ICONS}
+    runtime/assets/fonts/WWHDSettingsSansSC-Regular.ttf
+    runtime/assets/fonts/OFL.txt)
+  target_sources(wwhd PRIVATE ${WWHD_IOS_RESOURCES})
+  set_source_files_properties(${WWHD_IOS_RESOURCES} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  set_target_properties(wwhd PROPERTIES
+    MACOSX_BUNDLE TRUE
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/ios/Info.plist.in"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "${WWHD_IOS_BUNDLE_ID}"
+    MACOSX_BUNDLE_BUNDLE_NAME "The Legend of Zelda: The Wind Waker HD"
+    XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${WWHD_IOS_BUNDLE_ID}"
+    XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Automatic"
+    XCODE_ATTRIBUTE_COMBINE_HIDPI_IMAGES "NO"
+    XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
+    XCODE_ATTRIBUTE_ENABLE_BITCODE "NO"
+    XCODE_ATTRIBUTE_SUPPORTED_PLATFORMS "iphoneos"
+    XCODE_ATTRIBUTE_SUPPORTS_MACCATALYST "NO")
+  return() # desktop tools and their dependencies run on the build Mac
 endif()
 
 if(WWHD_HAS_METAL)
@@ -1428,7 +1485,7 @@ add_test(NAME mod_guest_prepare COMMAND mod_package_test --guest-prepare)
 # issue #173: platform extensions of the settings overlay (overlay/extensions.h) and the overlay's text
 # fields through a platform keyboard (text_entry::field)
 add_executable(overlay_extensions_test runtime/tools/overlay_extensions_test.cpp runtime/src/overlay/extensions.cpp
-  runtime/src/overlay/text_field.cpp)
+  runtime/src/overlay/text_field.cpp runtime/src/overlay/controls_view.cpp runtime/src/input_map.cpp)
 target_include_directories(overlay_extensions_test PRIVATE runtime/src)
 target_compile_options(overlay_extensions_test PRIVATE -UNDEBUG)
 target_link_libraries(overlay_extensions_test PRIVATE imgui)
@@ -2484,7 +2541,7 @@ else()
   target_link_libraries(audio_backend_test PRIVATE "-framework AudioToolbox" "-framework CoreAudio")
   add_test(NAME audio_backend_layout_failure COMMAND audio_backend_test layout-failure)
 endif()
-foreach(mode surround default-stereo override-stereo stereo-device start-failure)
+foreach(mode surround default-stereo override-stereo stereo-device start-failure stale-queue)
   add_test(NAME audio_backend_${mode} COMMAND audio_backend_test ${mode})
 endforeach()
 

@@ -24,7 +24,7 @@ void presentation_topology(uint64_t epoch, uint32_t images,
                            uint32_t acquire_slots, uint32_t submission_slots,
                            uint32_t present_mode, bool async);
 void flush();
-#ifdef __OBJC__
+#if defined(__OBJC__) && !defined(WWHD_IOS)
 CAMetalLayer *make_layer(NSWindow *window);
 #endif
 } // namespace present_observer

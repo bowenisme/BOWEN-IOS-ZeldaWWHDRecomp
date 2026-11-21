@@ -16,8 +16,8 @@ class SettingsShortcut {
     double since_ = -1;
     bool latched_ = false, home_ = false;
 public:
-    OpenReason reason() const { return reason_; }
     enum Action { None, Open, Close };
+    OpenReason reason() const { return reason_; }
     Action poll(double now, bool select, bool home, bool open) {
         Action action = None;
         if (home && !home_) { action = open ? Close : Open; reason_ = OpenReason::Home; }

@@ -66,6 +66,8 @@ inline ProcessResult run_process(const std::vector<std::string>& args,const std:
     CloseHandle(read);WaitForSingleObject(pi.hProcess,INFINITE);DWORD code=1;
     GetExitCodeProcess(pi.hProcess,&code);CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
     result.code=int(code);
+#elif defined(WWHD_IOS)
+    result.error="External preparation tools must run on the Mac before signing the iPad app";
 #else
     int pipefd[2];if(pipe(pipefd)){result.error="cannot create tool output pipe";return result;}
     fcntl(pipefd[0],F_SETFD,FD_CLOEXEC);fcntl(pipefd[1],F_SETFD,FD_CLOEXEC);

@@ -107,6 +107,10 @@ inline bool FormatIsRenderable(Latte::E_GX2SURFFMT format)
 template <typename... T>
 inline bool executeCommand(fmt::format_string<T...> fmt, T&&... args) {
     std::string command = fmt::format(fmt, std::forward<T>(args)...);
+#ifdef WWHD_IOS
+    cemuLog_log(LogType::Force, "External shader tools are unavailable on iPad; use runtime Metal compilation");
+    return false;
+#else
     int res = system(command.c_str());
     if (res != 0)
     {
@@ -115,6 +119,7 @@ inline bool executeCommand(fmt::format_string<T...> fmt, T&&... args) {
     }
 
     return true;
+#endif
 }
 
 /*

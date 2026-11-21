@@ -37,8 +37,8 @@ struct ImDrawData;
 
 namespace overlay {
 
-// Host input thread, every input poll (the AppKit host: the overlay's frame): the settings shortcut
-// (Home, Select held) and the platform's shortcuts (extensions.h).
+// Host input thread, every input poll (the AppKit host: the overlay's frame): the settings shortcut and
+// platform shortcuts (extensions.h).
 void poll_controller_shortcuts(const float* values);
 // Native Controls capture also owns controller presses until they are released.
 void external_binding_capture(bool active);

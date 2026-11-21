@@ -3250,20 +3250,25 @@ void tab_about() {
         ImGui::Text("%s (%s), %s build: the game code runs from the decompiled source (experimental)", build::version(),
                     build::commit(), build::variant());
     if (!ext::features().keyboard) {  // a controller only
+#ifdef WWHD_IOS
+        note("On iOS, use the on-screen UIKit Settings button. Controller buttons stay bound to the game.");
+#else
         note("Settings overlay: hold Select / press Home on a controller. B closes. L / R switch tabs. The game keeps "
              "running and sees no input while this menu is open.");
+#endif
         note("When the game asks for text (your name), a text window appears over the game: D-pad / left stick choose a "
              "key, A types it, B deletes, X adds a space, Y is Shift, L / R switch between letters, accents and symbols, "
              "Start confirms.");
     } else {
-#ifdef __APPLE__
+#ifdef WWHD_IOS
+        note("On iPhone and iPad, use the on-screen Settings button. Controller buttons stay bound to the game.");
+#elif defined(__APPLE__)
         note("Settings overlay: Esc or F1 (Fn+F1 on most Mac keyboards), Cmd+, or Settings... in the app menu, or hold Select / "
              "press Home on a controller. With a captured mouse, the first Esc frees the mouse. Esc, F1 or B closes. "
 #else
         note("Settings overlay: Esc or F1, or hold Select / press Home on a controller. With a captured mouse, the first "
              "Esc frees the mouse. Esc, F1 or B closes. "
 #endif
-             "L / R switch tabs on a controller. The game keeps running and sees no input while this menu is open.");
         note("When the game asks for text (your name), a text window appears over the game: type on the keyboard "
              "(Enter = OK, Esc = Cancel), click the on-screen keys, or use a controller: D-pad / left stick choose a key, "
              "A types it, B deletes, X adds a space, Y is Shift, L / R switch between letters, accents and symbols, "
@@ -3470,7 +3475,12 @@ void settings_window() {
         ImGui::SetNextWindowFocus();  // keyboard / controller navigation starts in the menu
         U.just_opened = false;
     }
-    if (ImGui::Begin("Wind Waker HD  -  Settings", &open, fl)) {
+#ifdef WWHD_IOS
+    constexpr const char* settings_title = "塞尔达传说：风之杖 HD 设置";
+#else
+    constexpr const char* settings_title = "Wind Waker HD  -  Settings";
+#endif
+    if (ImGui::Begin(settings_title, &open, fl)) {
         const std::vector<ext::ShownTab>& tabs = ext::tabs();  // built-in and added (extensions.h)
         // L / R on a controller switch tabs
         if (U.cap_action < 0 && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId)) {
@@ -3602,6 +3612,7 @@ void poll_controller_shortcuts(const float* values) {
     // the platform's shortcuts (extensions.h) first: the inputs one takes stay from the settings shortcut
     // until released, and from the game (shortcut_took_input)
     if (!ext::shortcuts().empty() && ext::poll_shortcuts(pad, is_open())) g_shortcut_took = true;
+#ifndef WWHD_IOS  // iOS opens its own UIKit settings panel; controller buttons stay with the game
     static input_map::ShortcutPoll bindings;
     const auto m = input_map::current();
     const PadValues available = pad;
@@ -3625,6 +3636,7 @@ void poll_controller_shortcuts(const float* values) {
 
     if (action == SettingsShortcut::Close || (action == SettingsShortcut::Open && may_open))
         set_open(action == SettingsShortcut::Open, shortcut.reason());
+#endif
 }
 bool shortcut_took_input() { return g_shortcut_took.exchange(false); }
 
@@ -3634,16 +3646,24 @@ void set_open(bool open, OpenReason reason, KeyOrigin origin) {
 #endif
     if (g_open.exchange(open) == open) return;
     if (!open) g_dialog_open = false;
+#ifdef WWHD_IOS
+    const bool keep_fast_forward = mods::fast_forward_latched();
+#endif
     for (auto& k : g_held_keys) k = false;
     input::release_keys();  // keys held now belong to the menu (opening) or are not stuck in the game (closing)
     if (open) {
+#ifndef WWHD_IOS
         mods::fast_forward_reset();
+#endif
         mods::lock_on_reset();
         mods::quick_use_reset();
         mods::mouse_release();
         U.just_opened = true;
         U.slots_time = -1;
     }
+#ifdef WWHD_IOS
+    if (keep_fast_forward) mods::set_fast_forward_latched(true);
+#endif
     const auto message = open_message(open, reason, origin, render::frame_count());
     LOG("%s", message.c_str());
 }

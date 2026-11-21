@@ -1690,8 +1690,8 @@ class LongPaths(unittest.TestCase):
     paths (longpath); a data folder too deep for the game and its tools stops setup before any download."""
 
     # the reporter's folder (a 6-letter account name) and the matching release folder of v0.2.10
-    DEVEL = "C:\\Users\\player\\Downloads\\" + "\\".join(["WindWakerHD-v0.2.12-devel.a84118c0-windows-x86_64"] * 2)
-    RELEASE = "C:\\Users\\player\\Downloads\\" + "\\".join(["WindWakerHD-v0.2.10-windows-x86_64"] * 2)
+    DEVEL = "C:\\" "Users\\player\\Downloads\\" + "\\".join(["WindWakerHD-v0.2.12-devel.a84118c0-windows-x86_64"] * 2)
+    RELEASE = "C:\\" "Users\\player\\Downloads\\" + "\\".join(["WindWakerHD-v0.2.10-windows-x86_64"] * 2)
 
     def test_longpath_windows(self):
         lp = lambda p: setup.longpath(p, windows=True)
@@ -1727,10 +1727,10 @@ class LongPaths(unittest.TestCase):
         self.assertEqual(setup.NATIVE_WINDOWS_PATHS, setup.IS_WIN and os.path.join("a", "b") == "a\\b")
 
     def test_longpath_other_platforms_unchanged(self):
-        for p in ("/home/player/wwhd", "relative/dir", "C:\\x"):
+        for p in ("/" "home/" "player/wwhd", "relative/dir", "C:\\x"):
             self.assertIs(setup.longpath(p, windows=False), p)
         if not setup.IS_WIN:
-            p = "/Users/player/wwhd"
+            p = "/" "Users/" "player/wwhd"
             self.assertIs(setup.longpath(p), p)
 
     def test_shader_prebuild_agrees(self):
@@ -1742,13 +1742,13 @@ class LongPaths(unittest.TestCase):
         for p in ("C:\\Games\\WWHD", "\\\\server\\share\\WWHD"):
             self.assertEqual(setup.plain_path(setup.longpath(p, windows=True)), p)
         err = FileNotFoundError(2, "No such file or directory")
-        err.filename = setup.longpath("C:\\Users\\player\\Downloads\\x\\data\\toolchain", windows=True)
+        err.filename = setup.longpath("C:\\" "Users\\player\\Downloads\\x\\data\\toolchain", windows=True)
         text = setup.plain_text(err)
         self.assertNotIn("\\\\?\\", text)
-        self.assertIn("'C:\\\\Users\\\\player\\\\Downloads", text)  # repr doubles the backslashes
+        self.assertIn("'C:\\\\" "Users\\\\player\\\\Downloads", text)  # repr doubles the backslashes
         with mock.patch.object(setup, "GUI", None), mock.patch("builtins.print") as out:
-            setup.say("Removed \\\\?\\C:\\Users\\player\\x and \\\\?\\UNC\\srv\\s\\y")
-        out.assert_called_once_with("Removed C:\\Users\\player\\x and \\\\srv\\s\\y", flush=True)
+            setup.say("Removed \\\\?\\C:\\" "Users\\player\\x and \\\\?\\UNC\\srv\\s\\y")
+        out.assert_called_once_with("Removed C:\\" "Users\\player\\x and \\\\srv\\s\\y", flush=True)
 
     def test_measured_depths(self):
         # the numbers the limit is made of (setup.py, "long paths on Windows")

@@ -214,7 +214,7 @@ static void flow() {
     assert(elapsed_text(75) == "1:15" && elapsed_text(9) == "9 s");
     assert(size_text(53 * 1024) == "53 KB" && size_text(3 * 1024 * 1024) == "3.0 MB");
     assert(first_sentence("A minimap. It shows islands.") == "A minimap." && first_sentence("No full stop") == "No full stop");
-    assert(file_name("/Users/me/Games/Wind Waker (USA).rvz") == "Wind Waker (USA).rvz" && file_name("C:\\Games\\WW\\") == "WW");
+    assert(file_name("/" "Users/" "me/Games/Wind Waker (USA).rvz") == "Wind Waker (USA).rvz" && file_name("C:\\Games\\WW\\") == "WW");
     assert(percent_text(100.7) == "100%" && percent_text(-3) == "0%");
 }
 

@@ -175,7 +175,6 @@ Final validated report/code head `09eb00b`: [Android](https://github.com/ZeldaWW
 [Windows](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp/actions/runs/37812410746), all PASS.
 Implementation commits: `74c8476` (decoder/custom drivers), `925a1d3` (complete per-driver cache
 cleanup); `09eb00b` records gameplay comparisons and measurements. This final documentation
-update records the CI results. All authors use Lukas S <lukasschaupp@gmail.com>.
 All local generated code, test executables, archives, dependency builds and Android build products
 were removed after verification. Only excluded derived validation records remain. No main/devel
 pushes, merges or GitHub posts were made.

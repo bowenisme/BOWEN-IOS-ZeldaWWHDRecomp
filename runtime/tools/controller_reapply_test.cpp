@@ -6,6 +6,16 @@
 #include <initializer_list>
 using controller_reapply::needed_category;
 int main() {
+    using controller_reapply::follow_game_switch;
+    using controller_reapply::pro_delivery;
+    static_assert(follow_game_switch(false,true,1,true));
+    static_assert(follow_game_switch(false,true,0,false));
+    static_assert(!follow_game_switch(true,true,1,true)); // host change/load remains authoritative
+    static_assert(!follow_game_switch(false,false,1,true));
+    static_assert(!follow_game_switch(false,true,3,true));
+    static_assert(pro_delivery(false,true,0)); // old Pro menu can still close during migration
+    static_assert(!pro_delivery(false,true,1));
+    static_assert(!pro_delivery(false,false,0));
     // GamePad state (mode 1), now playing with the Pro Controller: switch the game to the Pro Controller
     static_assert(needed_category(1, true) == 0);
     // Off-TV GamePad play (mode 2) as well

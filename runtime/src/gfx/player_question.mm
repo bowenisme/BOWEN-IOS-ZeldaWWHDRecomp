@@ -1,3 +1,9 @@
+#ifdef WWHD_IOS
+#include "player_question.h"
+namespace gfx {
+int ask_player_alert(const std::string&, const std::string&, const std::vector<std::string>&) { return -1; }
+}  // namespace gfx
+#else
 // A question for the player in a native macOS alert (player_question.h). The save folder asks at
 // start-up, before the TV window exists and before AppKit's loop runs, so the alert is app-modal
 // (runModal), not a sheet.
@@ -82,3 +88,4 @@ int ask_player_alert(const std::string& title, const std::string& text, const st
     return out;
 }
 }  // namespace gfx
+#endif  // WWHD_IOS

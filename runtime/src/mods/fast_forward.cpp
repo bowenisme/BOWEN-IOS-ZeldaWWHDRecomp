@@ -27,6 +27,9 @@ std::atomic<bool> mute{env("WWHD_MOD_FF_MUTE", 1) != 0};
 std::atomic<bool> active{false}, release_required{false};
 std::atomic<uint32_t> held{0};
 std::atomic<bool> hold_request{false};  // fast_forward_hold
+// touch hosts (iOS settings panel): a latched boost (tap on, tap off) instead of a held button, and its
+// scope: story events only (the button's own gate) or all of gameplay
+std::atomic<bool> latched{false}, global_scope{false};
 const uint32_t play = GD(0x1046F0B0);
 bool eligible_as(bool enabled, uint32_t buttons, uint32_t button) {
     const char* stage = reinterpret_cast<const char*>(mem::ptr(play + 0x5134));
@@ -38,6 +41,15 @@ bool eligible_as(bool enabled, uint32_t buttons, uint32_t button) {
 }
 bool eligible(uint32_t buttons) { return eligible_as(fast_forward(), buttons, fast_forward_button()); }
 bool hold_eligible() { return hold_request.load() && eligible_as(true, 1, 1); }
+bool latched_eligible() {
+    if (!latched.load() || !fast_forward() || release_required.load()) return false;
+    if (eligible_as(true, 1, 1)) return true;                 // story events (cutscenes, dialogue)
+    if (!global_scope.load()) return false;
+    const char* stage = reinterpret_cast<const char*>(mem::ptr(play + 0x5134));
+    const bool gameplay = *stage && std::strncmp(stage, "sea_T", 8) && std::strncmp(stage, "Name", 8) && std::strncmp(stage, "ENDumi", 8);
+    return gameplay && ld32(play + 0x5B34) != 0 && !ld8(play + 0x5140 + 12) && !ld32(GD(0x101F36CC)) &&
+           !ld8(GD(0x101EA069)) && !overlay::blocks_input();
+}
 }
 bool fast_forward() { return enabled.load(); }
 void set_fast_forward(bool on) { enabled = on; if (!on) fast_forward_reset(); }
@@ -54,6 +66,7 @@ void fast_forward_reset() {
     if (!fast_forward() && !active.load()) return;
     release_required = true;
     held = 0;
+    latched = false;
     timebase::set_clock_rate(1);
     // The pass mode is changed only by service(), at a safe frame boundary.
 }
@@ -64,9 +77,13 @@ void fast_forward_input(uint32_t& buttons) {
     if (eligible(buttons)) buttons &= ~fast_forward_button();
 }
 void fast_forward_hold(bool on) { hold_request.store(on, std::memory_order_relaxed); }
+bool fast_forward_latched() { return latched.load(); }
+void set_fast_forward_latched(bool on) { latched = on; if (on) release_required = false; }
+bool fast_forward_global() { return global_scope.load(); }
+void set_fast_forward_global(bool on) { global_scope = on; }
 void fast_forward_service() {
-    if (!fast_forward() && !active.load() && !hold_request.load()) return;
-    const bool on = (!release_required.load() && eligible(held.load())) || hold_eligible();
+    if (!fast_forward() && !active.load() && !hold_request.load() && !latched.load()) return;
+    const bool on = (!release_required.load() && eligible(held.load())) || hold_eligible() || latched_eligible();
     if (active.exchange(on) != on) {
         audio::flush(); // discard queued output at the boundary, never guest audio callbacks
         trace("fast forward %s (%ux)", on ? "on" : "off", fast_forward_rate());

@@ -2,7 +2,9 @@
 // Guest memory, RPX loading, function dispatch, logging and HLE registry.
 #ifdef __APPLE__
 #include <mach/mach.h>
+#ifndef WWHD_IOS
 #include <mach/mach_vm.h>
+#endif
 #include <mach-o/ldsyms.h>
 #endif
 #include "platform/host.h"
@@ -102,7 +104,16 @@ namespace mem {
 static std::atomic<uint32_t> g_runtime_top{kRuntimeStart};
 
 void init() {
-#ifdef __APPLE__
+#if defined(WWHD_IOS)
+    static_assert(sizeof(vm_address_t) == 8 && sizeof(vm_size_t) == 8);
+    vm_address_t addr = reinterpret_cast<vm_address_t>(PPC_MEM_BASE);
+    // FIXED without OVERWRITE fails safely if another mapping occupies this range.
+    kern_return_t kr = vm_allocate(mach_task_self(), &addr, 0x100000000ull, VM_FLAGS_FIXED);
+    if (kr != KERN_SUCCESS || addr != reinterpret_cast<vm_address_t>(PPC_MEM_BASE))
+        fatal("cannot reserve iPad guest memory at %p (kr=%d)", PPC_MEM_BASE, kr);
+    kr = vm_protect(mach_task_self(), addr, 0x10000, false, VM_PROT_NONE);
+    if (kr != KERN_SUCCESS) fatal("cannot protect iPad guest null page (kr=%d)", kr);
+#elif defined(__APPLE__)
     mach_vm_address_t addr = (mach_vm_address_t)PPC_MEM_BASE;
     kern_return_t kr = mach_vm_allocate(mach_task_self(), &addr, 0x100000000ull, VM_FLAGS_FIXED);
     if (kr != KERN_SUCCESS) fatal("cannot reserve guest address space at %p (kr=%d)", PPC_MEM_BASE, kr);

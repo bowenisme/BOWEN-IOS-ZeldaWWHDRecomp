@@ -23,6 +23,10 @@
 #include "platform/appimage_notice.h"
 #include "platform/start_folder.h"
 #include "savestate.h"
+#ifdef WWHD_IOS
+#include "interp.h"
+#include "mods/fast_forward.h"
+#endif
 #ifdef _WIN32
 #include <timeapi.h>
 #endif
@@ -472,8 +476,14 @@ static void enter_data_folder(int argc, char** argv) {
 
 extern "C" void synthetic_game_frame(Cpu*, PpcFunc);
 
+#ifdef WWHD_IOS
+int wwhd_runtime_main(int argc, char** argv) {
+#else
 int main(int argc, char** argv) {
-    enter_data_folder(argc, argv);  // before anything reads a relative path
+#endif
+#ifndef WWHD_IOS
+    enter_data_folder(argc, argv);  // before anything reads a relative path (iOS: the host already entered Documents)
+#endif
     std::string shader_prebuild_root;
     // Android's isolated preparation activity and normal SDL startup share the
     // same private user directory and verified native library identity.
@@ -488,7 +498,9 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--shader-prebuild-result")) shaderprebuild::resultPath = argv[++i];
         else if (!strcmp(argv[i], "--shader-prebuild-library")) shaderprebuild::runtimeLibrary = argv[++i];
     }
-#ifdef WWHD_DECOMP
+#if defined(WWHD_IOS)
+    // Native guest code is generated and signed on the Mac, never compiled on the iPad.
+#elif defined(WWHD_DECOMP)
     mods::code::startup(argc, argv, true);  // the decomp version: never swapped for the normal game's code-mod build
 #else
     mods::code::startup(argc, argv);
@@ -816,6 +828,23 @@ int main(int argc, char** argv) {
         for (size_t i = 0; i < c.size() && i < files.size(); i++) c[i] = {files[i].first, files[i].second};
         player_models::set_choices(c);
     });
+#ifdef WWHD_IOS
+    // iPad uses original 30 Hz logic and at most 60 fps interpolation, including legacy
+    // ios.interpFps=120 and WWHD_INTERP_FPS>60 requests. Fast-forward keeps its own clock rate.
+    interp::set_fps(60);
+    interp::set_mode(getenv("WWHD_INTERP") ? (atoi(getenv("WWHD_INTERP")) ? 1 : 0) : 1);
+    if (!getenv("WWHD_INTERP_PACED")) interp::set_paced_interpolation_at(60, true);
+    if (!getenv("WWHD_INTERP") && !getenv("WWHD_INTERP_FPS")) {
+        std::string saved;
+        if (hostui::get("ios.frameMode",saved) && (saved=="0" || saved=="1")) interp::set_mode(saved=="1"?1:0);
+    }
+    if (!getenv("WWHD_MOD_FF_GLOBAL")) {
+        std::string saved;
+        if (hostui::get("ios.fastForwardGlobal",saved) && (saved=="0" || saved=="1"))
+            mods::set_fast_forward_global(saved=="1");
+    }
+    mods::set_story_system(false);
+#endif
     mem::init();
     auto valid_mod_memory = [](uint32_t address, size_t size) {
         if (size > 1024 * 1024) return false;

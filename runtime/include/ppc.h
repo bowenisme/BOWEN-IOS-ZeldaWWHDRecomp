@@ -12,7 +12,10 @@
 extern "C" {
 #endif
 
-#if defined(__ANDROID__) || (defined(__linux__) && defined(__aarch64__))
+#if defined(WWHD_IOS)
+/* Verified on iPadOS: the desktop 32 TiB base is outside its user address range. */
+#define PPC_MEM_BASE ((uint8_t*)0x7000000000ull)
+#elif defined(__ANDROID__) || (defined(__linux__) && defined(__aarch64__))
 /* arm64 Linux kernels (Android, Raspberry Pi OS and other 4K-page configurations) often have a 39-bit
    user address space (512 GiB), where 32 TiB is out of reach: stay well below it (64 GiB) */
 #define PPC_MEM_BASE ((uint8_t*)0x1000000000ull)

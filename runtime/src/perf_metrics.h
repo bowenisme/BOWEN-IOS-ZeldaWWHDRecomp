@@ -23,6 +23,8 @@ struct Metric {
 struct Snapshot { Metric game, render, gpu; };
 // Report sampling is active while the Graphics panel (which contains Copy report) is visible.
 void set_demand(bool overlay, bool report);
+// Independent native-host source; desktop updates cannot turn it off.
+void set_host_demand(bool wanted);
 bool enabled();
 void reset();
 uint64_t generation();

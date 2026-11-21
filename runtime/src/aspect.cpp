@@ -185,12 +185,17 @@ void set_mode(int m) {
 }
 void set_window_aspect(float a) {
     if (!(a > 0.1f && a < 20.0f)) return;
+    // iPhone/iPad use the exact drawable aspect so screen targets match native pixels.
+#if defined(WWHD_IOS)
+    float q = a;
+#else
     // Continuous resizes keep coarse steps, but exact preset-shaped windows must agree with
     // their presets (1280x960 otherwise rounds 4/3 to 1.335 and loses a target row).
     float q = std::round(a * 200.0f) / 200.0f;
     for (float preset : {4.0f / 3.0f, 16.0f / 10.0f, 64.0f / 27.0f, 32.0f / 9.0f})
         if (std::fabs(a - preset) <= 0.0025f) { q = preset; break; }
     if (std::fabs(q - kBase) < 0.006f) q = kBase;  // a 16:9 window (rounded pixel sizes) is 16:9
+#endif
     g_window.store(q, std::memory_order_relaxed);
 }
 float requested() {

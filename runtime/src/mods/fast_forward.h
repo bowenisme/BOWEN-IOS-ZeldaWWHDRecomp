@@ -26,4 +26,10 @@ void fast_forward_reset();                 // release required after save/load, 
 // with the same gates as the button (events only, no menu, overlay or scene change), also when the
 // Fast forward mod itself is off. Game thread, each pad read.
 void fast_forward_hold(bool on);
+// touch hosts (iOS settings panel): a latched boost toggled on screen (cleared by fast_forward_reset), and
+// whether it also runs outside story events (all gameplay, still never in menus or scene changes)
+bool fast_forward_latched();
+void set_fast_forward_latched(bool on);
+bool fast_forward_global();
+void set_fast_forward_global(bool on);
 }

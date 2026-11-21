@@ -15,11 +15,21 @@ namespace gx2 { void checkpoint_vulkan_caches(); void checkpoint_present_observe
 // Q = L, E = R, Left Shift = ZL, C = ZR, Enter = +, Tab = -, H = Home, 1-4 = D-pad up/down/left/right,
 // X = L-stick click, V = R-stick click; controllers use button positions (Xbox "A" = Wii U B),
 // switchable to by-label with input_map::FaceLayout (issue #78).
+#ifdef WWHD_IOS
+#import <UIKit/UIKit.h>
+#include "platform/ios/ios.h"
+#include "platform/ios/touch_layout.h"
+#else
 #import <AppKit/AppKit.h>
+#endif
 #import <GameController/GameController.h>
 #import <CoreHaptics/CoreHaptics.h>
 #import <QuartzCore/QuartzCore.h>  // CACurrentMediaTime
+#ifdef WWHD_IOS
+#include "platform/keycodes.h"  // kVK_* key codes (Carbon is macOS only)
+#else
 #include <Carbon/Carbon.h>  // kVK_* key codes
+#endif
 
 #include <cmath>
 #include <atomic>
@@ -87,6 +97,20 @@ static void apply_background_controllers() {  // main thread
     applied = on;
 }
 static PadState g_pad;  // controller part, refreshed on the main thread
+#ifdef WWHD_IOS
+// iOS: the on-screen buttons and sticks (touch_controls.mm), the controller gyro switch, and whether the
+// app is in the foreground (UIApplication may only be asked on the main thread; others read the last answer)
+static PadState g_touch_pad;
+static std::atomic<bool> g_motion_active{true};
+static std::atomic<bool> g_ios_active{true};
+static bool host_app_active() {
+    if ([NSThread isMainThread])
+        g_ios_active = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
+    return g_ios_active.load(std::memory_order_relaxed);
+}
+#else
+static bool host_app_active() { return NSApp.isActive; }
+#endif
 static bool g_touch;
 static float g_tx, g_ty;
 
@@ -96,7 +120,11 @@ void set_touch(bool down, float x, float y) {
     g_tx = x;
     g_ty = y;
 }
-void set_touch_virtual(uint32_t) {}  // no on-screen controls on this host
+void set_touch_virtual(uint32_t) {}  // the Jump / Moon jump on-screen buttons are the SDL host's (Android)
+#ifdef WWHD_IOS
+void set_motion_active(bool active) { g_motion_active = active; }
+void set_touch_pad(const PadState& pad) { std::lock_guard<std::mutex> lk(g_mu); g_touch_pad = pad; }
+#endif
 
 // Controller details and per-controller bindings (input_map profiles): GameController has no SDL GUID,
 // so a pad is known by its name (input_map falls back to the name)
@@ -329,7 +357,7 @@ static void io_devices_values(std::vector<std::pair<uintptr_t, overlay::PadValue
         put(kPadRSRight, std::max(p->rx, 0.f)); put(kPadRSLeft, std::max(-p->rx, 0.f));
         put(kPadRSDown, std::max(p->ry, 0.f));  put(kPadRSUp, std::max(-p->ry, 0.f));
         put(kPadLT, p->lt); put(kPadRT, p->rt);
-        if (!NSApp.isActive && !background_controllers()) d.fill(0.f);
+        if (!host_app_active() && !background_controllers()) d.fill(0.f);
         out.emplace_back((uintptr_t)p->dev, d);
         if (pads) pads->push_back(nil);
     }
@@ -394,8 +422,12 @@ static std::string pad_name(GCController* c) {
 
 // every mappable controller input, 0..1, the strongest over all connected controllers
 void controller_values(float* v) {
+#ifdef WWHD_IOS
+    g_gameplay_focus.store(host_app_active(), std::memory_order_relaxed);
+#else
     g_gameplay_focus.store(NSApp.isActive && NSApp.keyWindow && !NSApp.modalWindow &&
                           !NSApp.keyWindow.sheetParent, std::memory_order_relaxed);
+#endif
     using namespace input_map;
     for (int i = 0; i < kPadCount; i++) v[i] = 0;
     for (const auto& [id, d] : devices_values())
@@ -493,6 +525,9 @@ void release_keys() {
     std::lock_guard<std::mutex> lk(g_mu);
     g_mouse_bindings.consume();
     memset(g_keys, 0, sizeof(g_keys));
+#ifdef WWHD_IOS
+    g_touch_pad = {};
+#endif
 }
 
 // ---- Controller rumble (GameController haptics, through CoreHaptics).
@@ -671,6 +706,7 @@ void shutdown_rumble() {
 // so it does not touch CoreHaptics; the engines stop with the process.
 void stop_rumble_now() {}
 
+#ifndef WWHD_IOS  // keyboard events and test keys: AppKit only
 // modifier keys arrive as flagsChanged; the device-dependent bits tell left from right
 static bool modifier_down(uint16_t code, NSEventModifierFlags f) {
     switch (code) {
@@ -758,6 +794,8 @@ static void start_test_keys() {
     }];
 }
 
+#endif  // !WWHD_IOS
+
 // ---- motion sensors (motion/motion.h) ----
 // GameController.framework reports the gyro and accelerometer of DualSense, DualShock 4, Switch Pro and
 // Joy-Con controllers (macOS 11+). Its frame (as CoreMotion's, for a controller lying flat): x right, y
@@ -766,7 +804,11 @@ static void start_test_keys() {
 // specific force), so: sdl = (x, z, -y), acceleration negated.
 // WWHD_GYRO_LOG=1 logs a raw sample twice a second (to check the axes with a new controller).
 static void update_motion_sensors() API_AVAILABLE(macos(11.0)) {
-    const bool want = motion::wants_controller_sensors() && !getenv("WWHD_NO_HOST_INPUT");
+    const bool want = motion::wants_controller_sensors() && !getenv("WWHD_NO_HOST_INPUT")
+#ifdef WWHD_IOS
+        && g_motion_active.load() && !ios::controls_block_input()
+#endif
+        ;
     static NSMutableSet* active = [NSMutableSet set];  // controllers whose handler is installed
     int n = 0;
     NSArray<GCController*>* connected = [GCController controllers];
@@ -795,6 +837,9 @@ static void update_motion_sensors() API_AVAILABLE(macos(11.0)) {
             const uint64_t id = (uint64_t)(uintptr_t)(__bridge void*)c;
             m.valueChangedHandler = ^(GCMotion* mm) {
                 if (overlay::blocks_input()) return;
+#ifdef WWHD_IOS
+                if (!g_motion_active.load() || ios::controls_block_input()) return;
+#endif
                 GCRotationRate r = mm.rotationRate;
                 GCAcceleration a = mm.hasGravityAndUserAcceleration
                                        ? GCAcceleration{mm.gravity.x + mm.userAcceleration.x, mm.gravity.y + mm.userAcceleration.y,
@@ -825,6 +870,7 @@ void init() {
     if (const char* v = getenv("WWHD_OVERLAY_MOUSE_HANDOFF"); v && !strcmp(v,"0"))
         LOG("[overlay] diagnostic mouse handoff disabled (WWHD_OVERLAY_MOUSE_HANDOFF=0)");
     input_map::load_startup();
+#ifndef WWHD_IOS
     start_test_keys();
 #ifdef WWHD_HAS_IOKIT
     iokit_input_init();  // HID gamepads GameController.framework does not surface (Steam Input's pad)
@@ -886,6 +932,7 @@ void init() {
                                                       object:nil queue:nil usingBlock:^(NSNotification*) {
         release_keys();
     }];
+#endif  // !WWHD_IOS
     apply_background_controllers();  // before discovery; the poll below follows later changes
     [GCController startWirelessControllerDiscoveryWithCompletionHandler:nil];
     // the Automatic face preset follows the pad that was plugged in first (issue #78 follow-up)
@@ -912,7 +959,7 @@ void init() {
         // one gate per controller as on the SDL host (overlay/release_gate.h, issue #153); the overlay
         // polls the Home / Select shortcut on its frame (and the platform shortcuts: an input one took
         // counts as captured, overlay/extensions.h)
-        g_window_focus.store(NSApp.isActive, std::memory_order_relaxed);
+        g_window_focus.store(host_app_active(), std::memory_order_relaxed);
         apply_background_controllers();
         static overlay::DeviceGates<uintptr_t> gates;
         std::vector<GCController*> pads;
@@ -1274,6 +1321,9 @@ PadState read() {
     }
     PadState k = keyboard_state(!no_host), s = g_pad;
     if (no_host) s = PadState{};
+#ifdef WWHD_IOS
+    else { std::lock_guard<std::mutex> lk(g_mu); ios::touch::merge(s, g_touch_pad); }
+#endif
     for (auto& p : script)
         if (frame >= p.from && frame <= p.to) s.buttons |= p.bits;
     s.buttons |= dsweep::pad_buttons(frame);  // a title D-sweep (setup) passes the boot's notice screen
@@ -1305,11 +1355,25 @@ PadState read() {
         mods::quick_use_filter_pad(s);  // final merged/polled pad, never overlay-owned input
     }
     file_select_quit::filter(s);
+#ifdef WWHD_IOS
+    // the settings panel has the input; after it closes, held touches stay out until released
+    static bool release_after_panel = false;
+    if (ios::controls_block_input()) { release_after_panel = true; s = PadState{}; }
+    else if (release_after_panel) {
+        if (!s.buttons && std::abs(s.lx) < .2f && std::abs(s.ly) < .2f && std::abs(s.rx) < .2f && std::abs(s.ry) < .2f)
+            release_after_panel = false;
+        s = PadState{};
+    }
+#endif
     return s;
 }
 
 void prompt_text(const std::u16string& initial, int max_len,
                  std::function<void(bool ok, std::u16string text)> done) {
+#ifdef WWHD_IOS
+    ios::prompt_text(initial, max_len, done);  // a UIKit alert with a text field (platform/ios/host.mm)
+}
+#else
     NSString* init = [NSString stringWithCharacters:(const unichar*)initial.data() length:initial.size()];
     dispatch_async(dispatch_get_main_queue(), ^{
         {
@@ -1338,5 +1402,6 @@ void prompt_text(const std::u16string& initial, int max_len,
         else finish([alert runModal]);
     });
 }
+#endif
 
 }  // namespace input

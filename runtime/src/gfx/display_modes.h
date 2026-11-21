@@ -91,6 +91,7 @@ extern std::atomic<bool> g_second_display_available; // capability, independent 
 // acquires the second screen for a moment (#222). Ignored once load_second_screen_off ran.
 void seed_second_screen_off(bool off);
 void load_second_screen_off(bool off);  // the saved choice from settings.ini (hostui::load_saved_options)
+extern std::atomic<bool> g_drc_during_switch; // single-screen hosts must expose the exchange's GamePad prompt
 
 int find_name(const char* const* names, int n, const char* s, int def);  // index of s, def if absent
 double display_now();  // seconds, monotonic (the automatic overlay's clock)
@@ -160,6 +161,7 @@ bool game_picture_hit(float nx, float ny, float* px, float* py, float* aspect, b
 // the mouse wheel at (nx, ny) of the TV window is over a code mod's touch claim (guest_live.h): its point on the
 // picture as game_picture_hit gives it (the hosts hand the wheel to tv_pointer::add_wheel then)
 bool wheel_on_mod_claim(float nx, float ny, float* px, float* py, float* aspect);
+bool gamepad_picture(float* x, float* y, float* w, float* h, bool* fullscreen);
 
 // Touch screens (Android; WWHD_VIEW_BUTTON=1 elsewhere for tests): a button in the TV window's top
 // left corner. A tap cycles the views offered there (picture-in-picture, GamePad only, TV only);

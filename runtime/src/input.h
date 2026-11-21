@@ -35,6 +35,10 @@ void mouse_binding_wheel(float delta, bool eligible);
 void release_mouse_bindings();
 void set_touch(bool down, float x, float y);  // mouse on the GamePad window
 void set_touch_virtual(uint32_t bits);         // the on-screen Jump / Moon jump buttons (kVirt* bits held)
+#ifdef WWHD_IOS
+void set_touch_pad(const PadState& pad); // UIKit buttons/sticks, separate from DRC touch
+void set_motion_active(bool active);
+#endif
 
 // Which Wii U controller the keyboard and host controllers act as. In Pro Controller mode the
 // GamePad stays connected (its screen and touch still work) but its buttons and sticks are idle.
@@ -55,7 +59,8 @@ bool window_focused();
 bool background_controllers();
 void release_keys();                // forget held keys (another window took the keyboard)
 void controller_values(float* v);   // main thread: input_map::kPadCount host controller inputs, 0..1
-void host_controller_values(float* v);  // any thread: the latest controller_values (settings overlay)
+// Latest overlay inputs.
+void host_controller_values(float* v);
 void held_keys(bool* keys);         // 256 entries: keys held for the game (keyboard + WWHD_KEYS script)
 
 // The connected host controllers as the host reports them (Controls > Controller details, the

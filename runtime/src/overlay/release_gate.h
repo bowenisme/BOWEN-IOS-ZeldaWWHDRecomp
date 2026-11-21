@@ -62,11 +62,15 @@ public:
         if (gated_out) gated_out->clear();
         std::fill(raw, raw + input_map::kPadCount, 0.0f);
         std::fill(game, game + input_map::kPadCount, 0.0f);
-        std::map<Key, ReleaseGate> kept;
+        // Keep connected devices' nodes: input is polled up to 240 times a second.
+        for (auto i=gates_.begin();i!=gates_.end();) {
+            if (std::none_of(devices.begin(),devices.end(),[&](const auto& d) { return d.first==i->first; }))
+                i=gates_.erase(i);
+            else ++i;
+        }
         for (const auto& [key, values] : devices) {
             PadValues gated = values;
-            ReleaseGate& gate = kept[key];
-            if (auto old = gates_.find(key); old != gates_.end()) gate = old->second;
+            ReleaseGate& gate = gates_[key];
             gate.filter(gated.data(), captured);
             if (gated_out) gated_out->push_back(gated);
             for (int p = 0; p < input_map::kPadCount; p++) {
@@ -74,7 +78,6 @@ public:
                 game[p] = std::max(game[p], gated[p]);
             }
         }
-        gates_.swap(kept);
     }
     size_t size() const { return gates_.size(); }
     bool holds_back(const Key& key, int pad) const {

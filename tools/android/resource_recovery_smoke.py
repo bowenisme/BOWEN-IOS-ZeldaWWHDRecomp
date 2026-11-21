@@ -156,7 +156,7 @@ def main():
             if not damaged: raise AssertionError("Cannot damage an empty resource")
             damaged[len(damaged)//2] ^= 1
             shell("run-as", PACKAGE, "sh", "-c", "cat > " + shlex.quote(generation + "/" + observed_file), data=damaged)
-            extra = generation + ("/home/unbundled-resource-probe" if args.resource == "python" else "/unbundled-resource-probe")
+            extra = generation + ("/" "home/unbundled-resource-probe" if args.resource == "python" else "/unbundled-resource-probe")
             shell("run-as", PACKAGE, "sh", "-c", "cat > " + shlex.quote(extra), data=b"authored unbundled cache file\n")
             if private(generation + "/complete") != b"\x01": raise AssertionError("Damage changed completion marker")
             report.update(completed_cache_damaged=True, valid_marker_retained=True)

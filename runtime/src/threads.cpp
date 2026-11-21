@@ -34,6 +34,7 @@
 #include "native_quiescence_audit.h"
 #include "savestate.h"
 #include "state_metadata_validation.h"
+#include "guest_addr.h"
 #include "scheduler_tick.h"
 #include "rendezvous.h"
 #include "render_prof.h"
@@ -1712,6 +1713,60 @@ bool threads_ss_save(ss::Writer& w, std::string& why) {
     }
     w.u64(timebase::guest_now());
     return true;
+}
+
+// Settle the offline reporter through sead::Thread's normal quit-message protocol. It can still
+// be idle at title after a restart although the saved gameplay already joined it. Never manufacture
+// an exited HostThread: thaw lets its original guest epilogue run, then all checks run again.
+bool threads_ss_settle_offline(ss::Reader r) {
+#ifdef WWHD_IOS
+    {
+        std::lock_guard<std::mutex> lk(g_frz_m);
+        if (!g_frozen || !t_self || g_frz_owner != t_self) return false;
+    }
+    uint32_t n = r.u32();
+    if (!r.ok || n > size_t(r.e - r.p) / sizeof(ThreadRec)) return false;
+    std::lock_guard<std::mutex> lk(g_threads_mutex);
+    const auto object = [](uint32_t a, uint32_t size) {
+        return a >= mem::kMem2Start && uint64_t(a) + size <= mem::kMem2End && !(a & 3);
+    };
+    const uint32_t manager = ld32(GD(0x1018F47C));
+    if (!object(manager, 0x24)) return false;
+    const uint32_t worker = ld32(manager + 0x1C);
+    if (!object(worker, 0x98) || ld32(worker + 0x0C) != GD(0x1015E528) ||
+        ld32(worker + 0x78) != 0x7FFFFFFF || ld32(worker + 0x80) != 1) return false;
+    for (uint32_t i = 0; i < n; ++i) {
+        const auto s = r.pod<ThreadRec>();
+        if (s.started != 1 || s.exited != 1 || s.entry != GC(0x02760ACC) || s.argc || s.argv != worker) continue;
+        const auto it = g_threads.find(s.guest);
+        if (it == g_threads.end()) continue;
+        HostThread* t = it->second;
+        if (t == t_self || t->service || !t->started || t->exited || t->irq_off ||
+            t->entry != s.entry || t->argc != s.argc || t->argv != s.argv ||
+            ld32(worker + 0x88) != t->guest || ld32(t->guest + osthread::kName) != GD(0x10005518) ||
+            t->wst.load() != kParked || t->wait_kind != W_MSG_RECV || t->wait_obj != worker + 0x20 ||
+            t->cpu.lr != GC(0x02760394)) continue;
+        HQueue* q = nullptr;
+        {
+            std::lock_guard<std::mutex> table(g_queues.m);
+            const auto queue = g_queues.map.find(t->wait_obj);
+            if (queue != g_queues.map.end()) q = queue->second;
+        }
+        if (!q) return false;
+        {
+            std::lock_guard<std::mutex> queue(q->m);
+            if (!q->capacity || !q->msgs.empty()) return false;
+            // NetBossThread's nn_boss calls are unavailable in this port. Match requestQuit(0)
+            // (0275FF34), without its blocking send/join while the guest is frozen.
+            q->msgs.push_back({ld32(worker + 0x78), 0, 0, 0});
+            st32(worker + 0x80, 2);
+        }
+        q->cv.notify_all();
+        LOG("[savestate] settling offline NetBossThread %08X via its quit message", t->guest);
+        return true;
+    }
+#endif
+    return false;
 }
 
 // can the threads of this snapshot be put back into the current process? (all threads parked)

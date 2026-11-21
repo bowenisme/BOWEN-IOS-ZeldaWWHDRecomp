@@ -81,6 +81,8 @@ struct SlotInfo {
     std::string path;  // the slot's file
     bool older_other = false;  // the slot also has an older file of the other kind (kept, never deleted)
     uint64_t older_bytes = 0;
+    std::string thumbnail_path; // iOS settings panel: the slot's screenshot (slotN.png), when it exists
+    bool thumbnail_linked = false;
 };
 SlotInfo slot_info(int slot);           // 1..5 (101..103: crash recovery's automatic states, crashrec.h;
                                         //  110: last session, 111..113: auto saves, save_convenience.h)
@@ -98,6 +100,13 @@ void request_load(int slot);
 void request_load(int slot, std::function<void(bool,const std::string&)> done);
 void request_load_portable_file(const std::string& path, std::function<void(bool,const std::string&)> done);
 void request_load_portable_file(const std::string& path);  // a .wwstate anywhere (WWHD_PORTABLE_LOAD)
+// iOS settings panel (platform/ios/savestate_ios.cpp): instant-state slots on top of the API above.
+// Full states only; `done` may run on any thread (the UI dispatches to main).
+SlotInfo full_slot_info(int slot);
+void request_save_full(int slot, std::function<void(bool ok, const std::string& why)> done);
+void request_load_full(int slot, std::function<void(bool ok, const std::string& why)> done);
+bool instant_states_enabled();            // the panel's master switch (kept in the states folder)
+void set_instant_states_enabled(bool on);
 bool full_states();                     // save button / shortcuts make full states
 void set_full_states(bool on);          // the setting (kept in the states folder)
 SavePath save_path();                   // auto (Android streaming, desktop fast), streaming, fast

@@ -11,7 +11,9 @@
 
 #if defined(__APPLE__) && !defined(WWHD_SDL_HOST)
 #include <AudioToolbox/AudioToolbox.h>
+#ifndef WWHD_IOS
 #include <CoreAudio/CoreAudio.h>
+#endif
 #else
 #include <SDL3/SDL.h>
 #endif
@@ -31,6 +33,7 @@ namespace {
 
 constexpr int kCapacity = 1 << 15; // frames (~680 ms)
 constexpr int kTarget = kRate * 40 / 1000;
+constexpr uint32_t kRecoveryFadeFrames = kRate / 200; // 5 ms
 
 int16_t g_ring[kCapacity * 6];
 std::atomic<uint32_t> g_read{0}, g_write{0};
@@ -43,6 +46,9 @@ SDL_AudioStream *g_unit = nullptr;
 #endif
 
 std::atomic<uint64_t> g_underrun{0}, g_dropped{0};
+uint32_t g_fade_in_remaining = 0; // output-callback thread only
+int16_t g_last_output[6]{};
+bool g_have_last_output = false;
 
 FILE *g_dump = nullptr;
 std::mutex g_dump_mutex;
@@ -104,20 +110,69 @@ void write_wav_header() {
 
 void pull(int16_t *out, uint32_t frames) {
     uint32_t r = g_read.load(std::memory_order_relaxed), w = g_write.load(std::memory_order_acquire);
-    if (g_flush.exchange(false))
+    if (g_flush.exchange(false)) {
         r = w;
-    uint32_t avail = w - r, n = std::min<uint32_t>(avail, frames);
+        g_fade_in_remaining = kRecoveryFadeFrames;
+    }
+    uint32_t avail = w - r;
+    const uint32_t keep = std::max<uint32_t>(kTarget, frames);
+    const uint32_t recover_at = std::max<uint32_t>(2 * kTarget, keep);
+    if (avail > recover_at) {
+        // The AX servo corrects by at most 5%; replaying this backlog can take seconds to drain.
+        const uint32_t skipped = avail - keep;
+        r += skipped;
+        avail -= skipped;
+        g_dropped += skipped;
+        g_fade_in_remaining = kRecoveryFadeFrames;
+    }
+    uint32_t n = std::min<uint32_t>(avail, frames);
     for (uint32_t i = 0; i < n; i++) {
         uint32_t idx = (r + i) & (kCapacity - 1);
         memcpy(out + i * g_channels, g_ring + idx * g_channels, g_channels * sizeof(int16_t));
     }
+    const uint32_t fade_in = std::min(g_fade_in_remaining, n);
+    const uint32_t fade_in_done = kRecoveryFadeFrames - g_fade_in_remaining;
+    for (uint32_t i = 0; i < fade_in; ++i) {
+        const int32_t progress = fade_in_done + i + 1;
+        for (int ch = 0; ch < g_channels; ++ch) {
+            int16_t &sample = out[i * g_channels + ch];
+            sample = int16_t(int32_t(sample) * progress / int32_t(kRecoveryFadeFrames));
+        }
+    }
+    g_fade_in_remaining -= fade_in;
     if (n < frames) { // underrun: silence
+        if (n) {
+            const uint32_t fade = std::min(n, kRecoveryFadeFrames);
+            for (uint32_t i = 0; i < fade; ++i) {
+                const int32_t remaining = fade - i - 1;
+                for (int ch = 0; ch < g_channels; ++ch) {
+                    int16_t &sample = out[(n - fade + i) * g_channels + ch];
+                    sample = int16_t(int32_t(sample) * remaining / int32_t(fade));
+                }
+            }
+        }
         memset(out + n * g_channels, 0, (frames - n) * g_channels * 2);
+        if (!n && g_have_last_output) {
+            const uint32_t fade = std::min(frames, kRecoveryFadeFrames);
+            for (uint32_t i = 0; i < fade; ++i) {
+                const int32_t remaining = fade - i - 1;
+                for (int ch = 0; ch < g_channels; ++ch)
+                    out[i * g_channels + ch] =
+                        int16_t(int32_t(g_last_output[ch]) * remaining / int32_t(fade));
+            }
+        }
+        g_fade_in_remaining = kRecoveryFadeFrames;
         g_underrun += frames - n;
     }
     g_read.store(r + n, std::memory_order_release);
+    if (frames) {
+        for (int ch = 0; ch < g_channels; ++ch)
+            g_last_output[ch] = out[(frames - 1) * g_channels + ch];
+        g_have_last_output = true;
+    }
 }
 #if defined(__APPLE__) && !defined(WWHD_SDL_HOST)
+#ifndef WWHD_IOS
 OSStatus output_changed(AudioObjectID, UInt32, const AudioObjectPropertyAddress *, void *) {
     // Six-channel game state cannot be switched to stereo mid-frame. Keep it silent until
     // restart renegotiates the new device, instead of letting the OS fold it into two speakers.
@@ -126,6 +181,7 @@ OSStatus output_changed(AudioObjectID, UInt32, const AudioObjectPropertyAddress 
     audio::flush();
     return noErr;
 }
+#endif
 OSStatus render(void *, AudioUnitRenderActionFlags *, const AudioTimeStamp *, UInt32, UInt32 frames,
                 AudioBufferList *io) {
     if (g_device_changed)
@@ -223,7 +279,11 @@ void init() {
 #if defined(__APPLE__) && !defined(WWHD_SDL_HOST)
         AudioComponentDescription desc{};
         desc.componentType = kAudioUnitType_Output;
+#ifdef WWHD_IOS
+        desc.componentSubType = kAudioUnitSubType_RemoteIO;
+#else
         desc.componentSubType = kAudioUnitSubType_DefaultOutput;
+#endif
         desc.componentManufacturer = kAudioUnitManufacturer_Apple;
         AudioComponent comp = AudioComponentFindNext(nullptr, &desc);
         if (!comp || AudioComponentInstanceNew(comp, &g_unit) != noErr) {
@@ -234,6 +294,9 @@ void init() {
             open_dump();
             return;
         }
+#ifdef WWHD_IOS
+        if (g_channels == 6) fallback(); // initial iPad host uses stereo output
+#else
         if (g_channels == 6) {
             AudioDeviceID device = 0;
             UInt32 size = sizeof(device);
@@ -257,6 +320,7 @@ void init() {
             if (count < 6)
                 fallback();
         }
+#endif
         AudioStreamBasicDescription fmt{};
         fmt.mSampleRate = kRate;
         fmt.mFormatID = kAudioFormatLinearPCM;
@@ -328,9 +392,11 @@ void init() {
             g_unit = nullptr;
             return;
         }
+#ifndef WWHD_IOS
         AudioObjectPropertyAddress changed{kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyScopeGlobal,
                                            kAudioObjectPropertyElementMain};
         AudioObjectAddPropertyListener(kAudioObjectSystemObject, &changed, output_changed, nullptr);
+#endif
         LOG("[audio] CoreAudio output started (48 kHz, %d channels)", g_channels.load());
 #else
         if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {

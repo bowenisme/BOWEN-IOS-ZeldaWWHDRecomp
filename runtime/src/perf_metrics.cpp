@@ -7,6 +7,7 @@
 namespace perf {
 namespace {
 std::atomic<bool> active{false};
+std::atomic<unsigned> demand{0};
 std::atomic<uint64_t> epoch{1};
 std::atomic<uint64_t> gpuCount{0}, cpuCount{0}, timestampCount{0}, queryReads{0}, minimumQueryAge{UINT64_MAX};
 std::mutex mutex;
@@ -45,11 +46,13 @@ std::string time(const Metric& m) {
     snprintf(b, sizeof b, "%.2f ms (avg %.2f)", m.current, m.average());
     return b;
 }
-}
-void set_demand(bool overlay, bool report) {
-    const bool wanted = overlay || report;
-    if (active.load(std::memory_order_relaxed) == wanted) return;
+void update_demand(unsigned source, bool on) {
+    if(bool(demand.load(std::memory_order_relaxed) & source)==on)return;
+    const unsigned previous=on?demand.fetch_or(source):demand.fetch_and(~source);
+    if(bool(previous & source)==on)return;
     std::lock_guard<std::mutex> lock(mutex);
+    const bool wanted=demand.load()!=0;
+    if(active.load(std::memory_order_relaxed)==wanted)return;
     active = false;
     ++epoch;
     data = {};
@@ -57,6 +60,9 @@ void set_demand(bool overlay, bool report) {
     advanced = 0;
     active.store(wanted, std::memory_order_release);
 }
+}
+void set_demand(bool overlay, bool report) { update_demand(1, overlay || report); }
+void set_host_demand(bool wanted) { update_demand(2, wanted); }
 bool enabled() { return active.load(std::memory_order_acquire); }
 void reset() {
     std::lock_guard<std::mutex> lock(mutex);

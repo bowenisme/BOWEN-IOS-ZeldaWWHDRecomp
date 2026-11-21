@@ -519,9 +519,13 @@ void draw_controls(ControlsView& v, float w, float h) {
             dl->AddCircleFilled(p.c, p.R, lit(p.action) ? P.fill : P.button);
             dl->AddCircle(p.c, p.R, ring(p.action, &wd), 0, wd);
             bool small = p.action == kHome || p.action == kPlus || p.action == kMinus;
-            const auto look = prompt_style(m, pad_family());
-            const bool styled = p.action >= kA && p.action <= kY && face_layout(m) != FaceLayout::kLabels
-                                && look.face != FaceStyle::kOriginal;
+            const PadFamily family = pad_family();
+            const auto look = prompt_style(m, family);
+            const FaceLayout face = face_layout(m);
+            const bool psLabels = face == FaceLayout::kLabels && family == PadFamily::kPlayStation &&
+                                  look.face == FaceStyle::kPlayStation;
+            const bool styled = p.action >= kA && p.action <= kY &&
+                                (face != FaceLayout::kLabels || psLabels) && look.face != FaceStyle::kOriginal;
             const int host = styled ? look.buttons[p.action - kA] : 0;
             ImU32 ink = lit(p.action) ? P.white : P.buttonText;
             if (styled && look.colours) {
