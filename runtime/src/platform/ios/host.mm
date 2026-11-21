@@ -288,7 +288,7 @@ void show_startup_notice(const std::string& title, const std::string& text) {
     LOG("[ios] %s: %s", title.c_str(), text.c_str());
     dispatch_async(dispatch_get_main_queue(), ^{
         UIAlertController* a = [UIAlertController alertControllerWithTitle:@(title.c_str()) message:@(text.c_str()) preferredStyle:UIAlertControllerStyleAlert];
-        [a addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+        [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
         [g_window.rootViewController presentViewController:a animated:YES completion:nil];
     });
 }
@@ -395,7 +395,18 @@ void display_init() {
 }
 }
 
+static NSArray* g_full_constraints;
+static NSArray* g_safe_constraints;
+static bool g_full_screen=true;
 namespace ios {
+bool full_screen() { return g_full_screen; }
+void set_full_screen(bool full) {
+    if(!g_full_constraints||full==g_full_screen) return;
+    g_full_screen=full;
+    [NSLayoutConstraint deactivateConstraints:full?g_safe_constraints:g_full_constraints];
+    [NSLayoutConstraint activateConstraints:full?g_full_constraints:g_safe_constraints];
+    [g_metal_view.superview layoutIfNeeded];
+}
 PlayTime play_time() {
     const double now = CACurrentMediaTime();
     return {g_play_time.total(now), g_play_time.session(now)};
@@ -435,13 +446,13 @@ static void set_active(bool active) {
 void prompt_text(const std::u16string& initial, int max_len, std::function<void(bool, std::u16string)> done) {
     dispatch_async(dispatch_get_main_queue(), ^{
         release_touch_controls(); [g_metal_view releaseGamepadTouch]; input::release_keys(); input::set_touch(false,0,0);
-        UIAlertController* a = [UIAlertController alertControllerWithTitle:@"输入名字" message:nil preferredStyle:UIAlertControllerStyleAlert];
+        UIAlertController* a = [UIAlertController alertControllerWithTitle:@"Enter name" message:nil preferredStyle:UIAlertControllerStyleAlert];
         [a addTextFieldWithConfigurationHandler:^(UITextField* f) {
             f.text = [NSString stringWithCharacters:(const unichar*)initial.data() length:initial.size()];
             f.autocorrectionType = UITextAutocorrectionTypeNo;
         }];
-        [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(UIAlertAction*) { done(false, {}); }]];
-        [a addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction*) {
+        [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(UIAlertAction*) { done(false, {}); }]];
+        [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction*) {
             NSString* text = a.textFields.firstObject.text ?: @"";
             NSUInteger n = std::min(text.length, (NSUInteger)std::max(0, max_len));
             if (n && CFStringIsSurrogateHighCharacter([text characterAtIndex:n-1])) --n;
@@ -546,7 +557,7 @@ static void runtime_smoke(NSString* documents) {
     R.tv.tex = [R.device newTextureWithDescriptor:td];
     if (!R.tv.tex) fatal("iPad smoke render target allocation failed");
     __block unsigned frames=0;
-    NSMutableDictionary* report = [@{@"kind":@"runtime-self-check-no-game", @"guestBase":@"0x7000000000", @"guestBytes":@4294967296ULL,
+    NSMutableDictionary* report = [@{@"kind":@"runtime-self-check-no-game", @"guestBase":@"0x800000000", @"guestBytes":@4294967296ULL,
         @"memoryRoundTrip":@YES, @"gpuGuestReadback":@YES, @"metalDevice":R.device.name,
         @"footprintBefore":@(before), @"footprintAfterMemory":@(afterMemory), @"footprintAfterMetal":@(physical_footprint()),
         @"runtimeBuild":[NSString stringWithUTF8String:__DATE__ " " __TIME__],
@@ -575,7 +586,7 @@ static void runtime_smoke(NSString* documents) {
                 report[@"ok"] = @(gfx::g_ios_drawables.load() == frames && gfx::g_ios_presented.load() > 0);
                 NSData* data = [NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];
                 if (!data || ![data writeToFile:path atomically:YES]) fatal("cannot write iPad runtime report");
-                g_status.text = [report[@"ok"] boolValue] ? @"运行时自检完成：4 GiB 内存、Metal 共享缓冲和画面合成\n尚未启动游戏；等待原版游戏文件并重新生成代码" : @"画面呈现自检未通过；请查看 runtime-report.json";
+                g_status.text = [report[@"ok"] boolValue] ? @"Runtime self-check passed: 4 GiB memory, Metal shared buffers and compositing\nGame not started; waiting for the original game files and regenerated code" : @"Display self-check failed; see runtime-report.json";
                 UIApplication.sharedApplication.idleTimerDisabled = NO;
                 LOG("[ios] runtime self-check complete: %s",path.UTF8String);
                 fflush(stderr);
@@ -683,7 +694,7 @@ static void start_game_metrics(NSString* documents) {
             @"processorCount":@(NSProcessInfo.processInfo.activeProcessorCount),
             @"gpuIntervalMsPerFrame":@(gpuMs), @"metalAllocatedBytes":@(metal),
             @"devicePhysicalMemory":@(NSProcessInfo.processInfo.physicalMemory),
-            @"gpuDeviceName":gfx::R.device.name?:@"不可用",@"metalRecommendedWorkingSetBytes":@(workingSet>0?workingSet:-1),
+            @"gpuDeviceName":gfx::R.device.name?:@"unavailable",@"metalRecommendedWorkingSetBytes":@(workingSet>0?workingSet:-1),
             @"metalSupportsRaytracing":@(gfx::R.device.supportsRaytracing),
             @"metalSupportsRaytracingFromRender":@(gfx::R.device.supportsRaytracingFromRender),
             @"performanceSamplingActive":@(perf::enabled()),@"performanceSampleWindow":@(perf::Metric::capacity),
@@ -746,14 +757,17 @@ int wwhd_runtime_main(int, char**);
     g_metal_view=[[WWMetalView alloc] initWithFrame:vc.view.bounds];
     g_metal_view.translatesAutoresizingMaskIntoConstraints=NO;
     [vc.view addSubview:g_metal_view];
-    // Phones keep both the game HUD and controls clear of cutouts/Home; tablets retain full canvas.
-    id guide=UIDevice.currentDevice.userInterfaceIdiom==UIUserInterfaceIdiomPhone
-        ? vc.view.safeAreaLayoutGuide : vc.view;
-    [NSLayoutConstraint activateConstraints:@[
+    // Screen fill (Settings > Display > Screen): edge to edge by default, or inside the safe area with
+    // black bars. The touch controls lay themselves out inside the safe area either way.
+    auto pin=^NSArray*(id guide){ return @[
         [g_metal_view.leadingAnchor constraintEqualToAnchor:[guide leadingAnchor]],
         [g_metal_view.trailingAnchor constraintEqualToAnchor:[guide trailingAnchor]],
         [g_metal_view.topAnchor constraintEqualToAnchor:[guide topAnchor]],
-        [g_metal_view.bottomAnchor constraintEqualToAnchor:[guide bottomAnchor]]]];
+        [g_metal_view.bottomAnchor constraintEqualToAnchor:[guide bottomAnchor]]]; };
+    g_full_constraints=pin(vc.view);
+    g_safe_constraints=pin(vc.view.safeAreaLayoutGuide);
+    g_full_screen=![@"safe" isEqualToString:[NSUserDefaults.standardUserDefaults stringForKey:@"ios.screenFill"]];
+    [NSLayoutConstraint activateConstraints:g_full_screen?g_full_constraints:g_safe_constraints];
     self.window.rootViewController = vc;
     [self.window makeKeyAndVisible];
     g_display_link = [CADisplayLink displayLinkWithTarget:g_metal_view selector:@selector(refreshFrameRate:)];
@@ -784,7 +798,7 @@ int wwhd_runtime_main(int, char**);
             g_status.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
             g_status.numberOfLines = 0; g_status.textColor = UIColor.whiteColor;
             g_status.textAlignment = NSTextAlignmentCenter;
-            g_status.text = @"正在验证完整运行时和 Metal……\n此构建尚未运行游戏";
+            g_status.text = @"Checking the runtime and Metal…\nThis build hasn't run the game yet";
             [vc.view addSubview:g_status];
             runtime_smoke(docs);
         } else {

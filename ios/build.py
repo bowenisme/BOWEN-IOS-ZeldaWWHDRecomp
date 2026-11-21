@@ -73,7 +73,9 @@ else:
 run(cmake_args)
 xcodebuild_args = ['xcodebuild', '-project', binary/'wwhd_recomp.xcodeproj', '-scheme', 'wwhd',
      '-configuration', a.configuration, '-destination', 'generic/platform=iOS',
-     *([] if a.stub else ['-allowProvisioningUpdates']), '-jobs', '4', 'build']
+     *([] if a.stub else ['-allowProvisioningUpdates']),
+     # show every compile error in one run instead of stopping at the first file
+     '-IDEBuildingContinueBuildingAfterErrors=YES', '-jobs', '4', 'build']
 if a.stub:
     xcodebuild_args.append('CODE_SIGNING_ALLOWED=NO')
 run(xcodebuild_args)

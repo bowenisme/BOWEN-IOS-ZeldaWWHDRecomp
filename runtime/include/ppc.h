@@ -13,8 +13,10 @@ extern "C" {
 #endif
 
 #if defined(WWHD_IOS)
-/* Verified on iPadOS: the desktop 32 TiB base is outside its user address range. */
-#define PPC_MEM_BASE ((uint8_t*)0x7000000000ull)
+/* iPhone: apps get roughly the low 64 GiB of address space (XNU's "jumbo" limit; the range from
+   64 GiB up is a GPU carveout), so the iPad's 448 GiB base fails there. 32 GiB sits above dyld's
+   shared cache and the early heap, below the 64 GiB limit, and is 4 GiB aligned. */
+#define PPC_MEM_BASE ((uint8_t*)0x800000000ull)
 #elif defined(__ANDROID__) || (defined(__linux__) && defined(__aarch64__))
 /* arm64 Linux kernels (Android, Raspberry Pi OS and other 4K-page configurations) often have a 39-bit
    user address space (512 GiB), where 32 TiB is out of reach: stay well below it (64 GiB) */

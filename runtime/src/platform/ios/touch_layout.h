@@ -72,7 +72,7 @@ inline bool apply_button_configs(Layout& layout, float width, float height, cons
         const int binding = binding_index(c.button);
         if (binding >= 0 && c.button != default_button) {
             c.label = kBindings[binding].label;
-            c.hint = "功能";
+            c.hint = "Custom";
         }
     }
     return true;
@@ -115,14 +115,14 @@ inline Layout layout(float width, float height, bool gamepad_only = false) {
     const float guide_r = r * .42f;
     return {
         {{
-            {Kind::Button, action_x, action_y, r, 0, 0, input::kA, "A", "动作"},
-            {Kind::Button, width - 1.25f * r - margin, action_y, r * 1.08f, 0, 0, input::kB, "B", "剑/停船"},
-            {Kind::Button, width - 4.45f * r - margin, items_y, r * .78f, 0, 0, input::kX, "X", "物品"},
-            {Kind::Button, width - 2.65f * r - margin, items_y, r * .78f, 0, 0, input::kY, "Y", "物品"},
-            {Kind::Button, width - .95f * r - margin, items_y, r * .78f, 0, 0, input::kR, "R", "物品"},
-            {Kind::Button, lock_x, lock_y, r * .72f, 0, 0, input::kZL, "ZL", "锁定"},
-            {Kind::Button, shield_x, shield_y, r * .72f, 0, 0, input::kZR, "ZR", "盾/巡航"},
-            {Kind::Button, pause_x, pause_y, r * .72f, 0, 0, input::kPlus, "+", "暂停"},
+            {Kind::Button, action_x, action_y, r, 0, 0, input::kA, "A", "Action"},
+            {Kind::Button, width - 1.25f * r - margin, action_y, r * 1.08f, 0, 0, input::kB, "B", "Sword/Stop"},
+            {Kind::Button, width - 4.45f * r - margin, items_y, r * .78f, 0, 0, input::kX, "X", "Item"},
+            {Kind::Button, width - 2.65f * r - margin, items_y, r * .78f, 0, 0, input::kY, "Y", "Item"},
+            {Kind::Button, width - .95f * r - margin, items_y, r * .78f, 0, 0, input::kR, "R", "Item"},
+            {Kind::Button, lock_x, lock_y, r * .72f, 0, 0, input::kZL, "ZL", "Target"},
+            {Kind::Button, shield_x, shield_y, r * .72f, 0, 0, input::kZR, "ZR", "Shield"},
+            {Kind::Button, pause_x, pause_y, r * .72f, 0, 0, input::kPlus, "+", "Pause"},
             {Kind::GuideButton, width * .5f, margin + guide_r, guide_r, 0, 0, 0, "?", ""},
             gamepad_only
                 ? Control{Kind::MoveZone, move_x, move_y, move_r, 0, 0, 0, "", ""}

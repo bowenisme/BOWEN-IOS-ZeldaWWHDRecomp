@@ -476,7 +476,9 @@ if(WWHD_IOS)
     XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
     XCODE_ATTRIBUTE_ENABLE_BITCODE "NO"
     XCODE_ATTRIBUTE_SUPPORTED_PLATFORMS "iphoneos"
-    XCODE_ATTRIBUTE_SUPPORTS_MACCATALYST "NO")
+    XCODE_ATTRIBUTE_SUPPORTS_MACCATALYST "NO"
+    # iPhone: room for the 4 GiB guest address window and the game's memory (Tideport recipe)
+    XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${CMAKE_SOURCE_DIR}/ios/wwhd.entitlements")
   return() # desktop tools and their dependencies run on the build Mac
 endif()
 

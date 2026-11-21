@@ -90,7 +90,7 @@ std::atomic<bool> g_touch_layout_editing{false};
     _moveRing = [CAShapeLayer layer]; _moveKnob = [CAShapeLayer layer];
     _lookCursor = [CAShapeLayer layer]; _moveLabel = [CATextLayer layer];
     _moveRing.lineWidth = 1.5;
-    _moveLabel.string = @"移动"; _moveLabel.fontSize = 12;
+    _moveLabel.string = @"Move"; _moveLabel.fontSize = 12;
     _moveLabel.alignmentMode = kCAAlignmentCenter;
     _moveLabel.foregroundColor = [UIColor colorWithWhite:1 alpha:.72].CGColor;
     _moveLabel.contentsScale = UIScreen.mainScreen.scale;
@@ -311,7 +311,7 @@ std::atomic<bool> g_touch_layout_editing{false};
     c.button = ios::touch::kBindings[next].button;
     c.label = ios::touch::kBindings[next].label;
     c.hint = c.button == base.controls[_selectedButton].button
-        ? base.controls[_selectedButton].hint : "功能";
+        ? base.controls[_selectedButton].hint : "Custom";
     const CGRect newRect = CGRectMake(_area.origin.x + c.x - c.radius - 5,
         _area.origin.y + c.y - c.radius - 5, (c.radius + 5) * 2, (c.radius + 5) * 2);
     [self setNeedsDisplayInRect:oldRect];
@@ -349,15 +349,15 @@ std::atomic<bool> g_touch_layout_editing{false};
     const auto baseLayout = ios::touch::layout(_area.size.width, _area.size.height, _gamePadFullscreen);
     const float baseRadius = _selectedButton >= 0 ? baseLayout.controls[_selectedButton].radius : 1;
     NSString* selection = _selectedButton >= 0
-        ? [NSString stringWithFormat:@"拖动调整位置  ·  %@  %.0f%%",
+        ? [NSString stringWithFormat:@"Drag to move  ·  %@  %.0f%%",
             @(_layout.controls[_selectedButton].label),
             baseRadius > 0 ? 100.0 * _layout.controls[_selectedButton].radius / baseRadius : 100.0]
-        : @"点选按钮后拖动；可更改功能和大小";
+        : @"Tap a button, then drag it; you can change its function and size";
     NSDictionary* titleStyle = @{NSFontAttributeName:[UIFont systemFontOfSize:11 weight:UIFontWeightMedium],
         NSForegroundColorAttributeName:[UIColor colorWithWhite:1 alpha:.90]};
     [selection drawAtPoint:CGPointMake(toolbar.origin.x + 9, toolbar.origin.y + 5) withAttributes:titleStyle];
 
-    NSString* titles[7] = {@"完成", @"重置", @"‹", @"?", @"›", @"−", @"＋"};
+    NSString* titles[7] = {@"Done", @"Reset", @"‹", @"?", @"›", @"−", @"+"};
     if (_selectedButton >= 0) titles[3] = @(_layout.controls[_selectedButton].label);
     for (int i = 0; i < 7; ++i) {
         const CGRect r = [self editorActionRect:i];
@@ -748,7 +748,7 @@ std::atomic<bool> g_touch_layout_editing{false};
     UIBezierPath* ring = [UIBezierPath bezierPathWithOvalInRect:bounds];
     [[UIColor colorWithWhite:0 alpha:.10] setFill]; [ring fill];
     [[UIColor colorWithWhite:1 alpha:.34] setStroke]; ring.lineWidth = 1.5; [ring stroke];
-    NSString* title = @"视角";
+    NSString* title = @"Camera";
     NSDictionary* style = @{NSFontAttributeName:[UIFont systemFontOfSize:12 weight:UIFontWeightMedium],
         NSForegroundColorAttributeName:[UIColor colorWithWhite:1 alpha:.72]};
     const CGSize size = [title sizeWithAttributes:style];
@@ -815,10 +815,10 @@ std::atomic<bool> g_touch_layout_editing{false};
     NSString* lock = @(_layout.controls[5].label);
     NSString* shield = @(_layout.controls[6].label);
     NSArray<NSString*>* lines = @[
-        @"移动：左侧拖动；右侧轻扫视角",
-        [NSString stringWithFormat:@"互动/战斗：%@互动，%@锁定，%@挥剑，%@举盾", action, lock, sword, shield],
-        [NSString stringWithFormat:@"航海：摇杆转向，%@扬帆/开炮，%@减速/下船", action, sword],
-        [NSString stringWithFormat:@"道具：%@/%@/%@；GamePad画面可直接点按", itemX, itemY, itemR],
+        @"Move: drag on the left; swipe on the right to look around",
+        [NSString stringWithFormat:@"Action/combat: %@ interact, %@ target, %@ sword, %@ shield", action, lock, sword, shield],
+        [NSString stringWithFormat:@"Sailing: stick steers, %@ sail/fire, %@ slow down/disembark", action, sword],
+        [NSString stringWithFormat:@"Items: %@/%@/%@; you can tap the GamePad screen directly", itemX, itemY, itemR],
     ];
     const CGFloat padding = 10;
     const CGRect card = [self guideCardRect];
@@ -841,14 +841,14 @@ std::atomic<bool> g_touch_layout_editing{false};
         NSFontAttributeName:[UIFont systemFontOfSize:fontSize * .82 weight:UIFontWeightRegular],
         NSForegroundColorAttributeName:[UIColor colorWithWhite:1 alpha:.68],
     };
-    [@"触屏操作" drawAtPoint:CGPointMake(card.origin.x + padding, card.origin.y + padding * .45)
+    [@"Touch controls" drawAtPoint:CGPointMake(card.origin.x + padding, card.origin.y + padding * .45)
         withAttributes:titleStyle];
     CGFloat y = card.origin.y + padding + fontSize * 1.45;
     for (NSString* line in lines) {
         [line drawAtPoint:CGPointMake(card.origin.x + padding, y) withAttributes:bodyStyle];
         y += lineHeight;
     }
-    [@"点此卡片关闭；卡片外仍可操作" drawAtPoint:CGPointMake(card.origin.x + padding, y - lineHeight * .1)
+    [@"Tap this card to close it; controls outside it still work" drawAtPoint:CGPointMake(card.origin.x + padding, y - lineHeight * .1)
         withAttributes:closeStyle];
 }
 - (void)drawRect:(CGRect)rect {

@@ -44,18 +44,18 @@ static double metric_number(NSDictionary* values,NSString* key) {
     return std::isfinite(number)&&number>=0?number:-1;
 }
 static NSString* milliseconds(double value) {
-    return value>=0?[NSString stringWithFormat:@"%.2f ms",value]:@"采样中";
+    return value>=0?[NSString stringWithFormat:@"%.2f ms",value]:@"sampling";
 }
 static NSString* rate_reading(NSDictionary* metrics,NSString* key,NSString* unit) {
     const double value=metric_number(metrics,key);
-    return value>0?[NSString stringWithFormat:@"%.1f %@",value,unit]:@"采样中";
+    return value>0?[NSString stringWithFormat:@"%.1f %@",value,unit]:@"sampling";
 }
 static NSString* memory_size(double value) {
-    return value>=0?[NSString stringWithFormat:@"%.0f MiB",value/1048576.0]:@"不可用";
+    return value>=0?[NSString stringWithFormat:@"%.0f MiB",value/1048576.0]:@"unavailable";
 }
 static NSString* interval_details(NSDictionary* metrics,NSString* key) {
     NSDictionary* value=[metrics[key] isKindOfClass:NSDictionary.class]?metrics[key]:nil;
-    return [NSString stringWithFormat:@"最近 %@ · 均值 %@\n有效样本 %.0f / 120",
+    return [NSString stringWithFormat:@"Recent %@ · average %@\nValid samples %.0f / 120",
         milliseconds(metric_number(value,@"currentMs")),milliseconds(metric_number(value,@"averageMs")),
         std::max(0.0,metric_number(value,@"samples"))];
 }
@@ -73,22 +73,22 @@ static int target_fps() {
     return ios::pacing::target_output_fps(interp::mode(),interp::output_fps(),game_clock::rate(),mods::fast_forward_active());
 }
 static NSString* state_failure(const std::string& why,bool loading) {
-    if(why=="game save in progress")return loading?@"游戏正在保存，请完成后再读取":@"游戏正在保存，请完成后再即时存档";
-    if(why=="instant saves are disabled")return @"即时存档已关闭";
-    if(why=="snapshot contains an unfinished game save")return @"此即时存档包含未完成的游戏保存，请使用其他档位。";
-    return [NSString stringWithUTF8String:why.c_str()]?:@"未知原因";
+    if(why=="game save in progress")return loading?@"The game is saving; load again when it finishes":@"The game is saving; save state again when it finishes";
+    if(why=="instant saves are disabled")return @"Save states are off";
+    if(why=="snapshot contains an unfinished game save")return @"This save state contains an unfinished game save; use another slot.";
+    return [NSString stringWithUTF8String:why.c_str()]?:@"unknown reason";
 }
 static NSString* text(const std::string& value) { return [NSString stringWithUTF8String:value.c_str()]?:@""; }
 static NSString* upscale_status_text() {
     NSString* state=@(gfx::upscale::status());
-    NSDictionary* descriptions=@{@"off":@"未启用",@"checking":@"正在准备超分",
-        @"active":@"已启用：较高分辨率输入 → 屏幕尺寸重建",
-        @"inactive: GamePad view":@"当前为 GamePad 全屏，TV 超分暂停",
-        @"unsupported: device":@"设备不支持，已回退普通放大",
-        @"fallback: source format":@"当前画面格式不支持，已回退普通放大",
-        @"fallback: dimensions":@"当前尺寸无需或无法超分，使用普通呈现",
-        @"fallback: scaler creation":@"超分初始化失败，已回退普通放大",
-        @"fallback: texture or encoder":@"超分资源不可用，已回退普通放大"};
+    NSDictionary* descriptions=@{@"off":@"Off",@"checking":@"Preparing upscaling",
+        @"active":@"On: higher-resolution input → rebuilt at screen size",
+        @"inactive: GamePad view":@"GamePad fullscreen is showing; TV upscaling paused",
+        @"unsupported: device":@"Not supported on this device; using normal scaling",
+        @"fallback: source format":@"Current picture format not supported; using normal scaling",
+        @"fallback: dimensions":@"Upscaling not needed or not possible at this size; using normal output",
+        @"fallback: scaler creation":@"Upscaler failed to start; using normal scaling",
+        @"fallback: texture or encoder":@"Upscaler resources unavailable; using normal scaling"};
     return descriptions[state]?:state;
 }
 
@@ -121,7 +121,7 @@ enum { kSettingsScreen, kSettingsControls, kSettingsAssist, kSettingsSaves, kSet
         drawing=true;
     }
     CGContextStrokePath(c);
-    [[NSString stringWithFormat:@"帧时间 · 最近10秒 · 顶部 %.0f ms",top]
+    [[NSString stringWithFormat:@"Frame time · last 10 s · top %.0f ms",top]
         drawAtPoint:CGPointMake(6,1) withAttributes:@{NSFontAttributeName:[UIFont monospacedDigitSystemFontOfSize:10 weight:UIFontWeightRegular],NSForegroundColorAttributeName:UIColor.whiteColor}];
 }
 @end
@@ -173,6 +173,7 @@ enum { kSettingsScreen, kSettingsControls, kSettingsAssist, kSettingsSaves, kSet
 @property(nonatomic,strong) UISegmentedControl* upscaleQuality;
 @property(nonatomic,strong) UILabel* upscaleQualityTitle;
 @property(nonatomic,strong) UISegmentedControl* aspectMode;
+@property(nonatomic,strong) UISegmentedControl* screenFill;
 @property(nonatomic,strong) UILabel* resolutionNote;
 @property(nonatomic,strong) UIButton* save;
 @property(nonatomic,strong) UIButton* load;
@@ -245,9 +246,9 @@ static WWQuickControls* controls;
     if(!(self=[super init]))return nil;
     self.controller=controller;
     UIView* root=controller.view;
-    self.entry=[self button:@"设置" action:@selector(togglePanel)];
+    self.entry=[self button:@"Settings" action:@selector(togglePanel)];
     self.entry.backgroundColor=paper(); self.entry.alpha=.8;
-    self.entry.accessibilityLabel=@"航海设置";
+    self.entry.accessibilityLabel=@"Settings";
     self.entry.translatesAutoresizingMaskIntoConstraints=NO; [root addSubview:self.entry];
     [NSLayoutConstraint activateConstraints:@[
         [self.entry.topAnchor constraintEqualToAnchor:root.safeAreaLayoutGuide.topAnchor constant:12],
@@ -256,7 +257,7 @@ static WWQuickControls* controls;
     self.hud=label(@""); self.hud.font=[UIFont monospacedDigitSystemFontOfSize:12 weight:UIFontWeightMedium];
     self.hud.textColor=paper(); self.hud.backgroundColor=[ink() colorWithAlphaComponent:.75];
     self.hud.layer.cornerRadius=8; self.hud.clipsToBounds=YES; self.hud.numberOfLines=7;
-    self.hud.accessibilityLabel=@"游戏性能信息";
+    self.hud.accessibilityLabel=@"Game performance info";
     self.hud.translatesAutoresizingMaskIntoConstraints=NO; [root addSubview:self.hud];
     [NSLayoutConstraint activateConstraints:@[
         [self.hud.topAnchor constraintEqualToAnchor:root.safeAreaLayoutGuide.topAnchor constant:12],
@@ -292,7 +293,7 @@ static WWQuickControls* controls;
     NSLayoutConstraint* panelWidth=[self.panel.widthAnchor constraintEqualToConstant:
         UIDevice.currentDevice.userInterfaceIdiom==UIUserInterfaceIdiomPad?560:350];
     panelWidth.priority=999; panelWidth.active=YES;
-    UILabel* title=label(@"航海设置"); title.font=[UIFont systemFontOfSize:23 weight:UIFontWeightBold];
+    UILabel* title=label(@"Settings"); title.font=[UIFont systemFontOfSize:23 weight:UIFontWeightBold];
     self.performance=[self toggle:[NSUserDefaults.standardUserDefaults boolForKey:show_key] action:@selector(performanceChanged)];
     [self syncPerformanceDemand];
     self.fastEnabled=[self toggle:mods::fast_forward() action:@selector(fastEnabledChanged)];
@@ -301,16 +302,16 @@ static WWQuickControls* controls;
     ss::set_instant_states_enabled(self.states.on);
     self.rate=[self segments:@[@"2×",@"3×",@"4×"] action:@selector(rateChanged)];
     self.rate.selectedSegmentIndex=mods::fast_forward_rate()-2;
-    self.fastScope=[self segments:@[@"剧情 / 对话",@"全局"] action:@selector(scopeChanged)];
+    self.fastScope=[self segments:@[@"Cutscenes / dialogue",@"Everywhere"] action:@selector(scopeChanged)];
     self.fastScope.selectedSegmentIndex=mods::fast_forward_global()?1:0;
     self.controllerMode=[self segments:@[@"GamePad",@"Pro Controller"] action:@selector(controllerChanged)];
     self.controllerMode.selectedSegmentIndex=input::pro_controller()?1:0;
-    self.gamepadScreen=[self segments:@[@"自动",@"小窗",@"全屏"] action:@selector(gamepadScreenChanged)];
+    self.gamepadScreen=[self segments:@[@"Auto",@"Small window",@"Fullscreen"] action:@selector(gamepadScreenChanged)];
     self.gyro=[self toggle:motion::settings().source==motion::kController action:@selector(gyroChanged)];
     self.gyroStatus=label(@""); self.gyroStatus.numberOfLines=0; self.gyroStatus.font=[UIFont systemFontOfSize:12];
-    UIButton* recalibrate=[self button:@"体感重新校准" action:@selector(recalibrateGyro)];
+    UIButton* recalibrate=[self button:@"Recalibrate motion" action:@selector(recalibrateGyro)];
     [recalibrate.heightAnchor constraintEqualToConstant:40].active=YES;
-    self.touchMode=[self segments:@[@"自动",@"显示",@"隐藏"] action:@selector(touchChanged)];
+    self.touchMode=[self segments:@[@"Auto",@"Show",@"Hide"] action:@selector(touchChanged)];
     self.touchMode.selectedSegmentIndex=std::clamp((int)[NSUserDefaults.standardUserDefaults integerForKey:@"ios.touchControls"],0,2);
     self.touchMove=[UISlider new]; self.touchLook=[UISlider new];
     for(UISlider* slider in @[self.touchMove,self.touchLook]) {
@@ -320,21 +321,23 @@ static WWQuickControls* controls;
     self.touchMove.accessibilityIdentifier=@"touch-move-sensitivity";
     self.touchLook.accessibilityIdentifier=@"touch-look-sensitivity";
     self.touchMoveValue=label(@""); self.touchLookValue=label(@"");
-    UIButton* editTouch=[self button:@"自定义触屏布局与键位 ›" action:@selector(editTouchLayout)];
+    UIButton* editTouch=[self button:@"Customize touch layout and buttons ›" action:@selector(editTouchLayout)];
     editTouch.accessibilityIdentifier=@"edit-touch-layout";
-    UIButton* resetTouch=[self button:@"恢复触屏默认设置" action:@selector(resetTouchConfiguration)];
+    UIButton* resetTouch=[self button:@"Reset touch controls to default" action:@selector(resetTouchConfiguration)];
     resetTouch.accessibilityIdentifier=@"reset-touch-configuration";
-    UILabel* touchNote=label(@"编辑时可拖动按钮、调整大小和按键功能。灵敏度调节触屏响应，不改变游戏运行速度。");
+    UILabel* touchNote=label(@"While editing you can drag buttons and change their size and function. Sensitivity changes touch response, not game speed.");
     touchNote.numberOfLines=0; touchNote.font=[UIFont systemFontOfSize:12];
     self.frameMode=[self segments:@[@"30 FPS",@"60 FPS"] action:@selector(frameChanged)];
     self.frameMode.apportionsSegmentWidthsByContent=YES;
     self.frameMode.selectedSegmentIndex=frame_segment();
-    self.aspectMode=[self segments:@[@"适配屏幕",@"原始 16:9"] action:@selector(aspectChanged)];
-    self.quality=[self segments:@[@"标准 1×",@"屏幕原生",@"MetalFX 超分"] action:@selector(qualityChanged)];
+    self.aspectMode=[self segments:@[@"Fit screen",@"Original 16:9"] action:@selector(aspectChanged)];
+    self.screenFill=[self segments:@[@"Full screen",@"Black bars"] action:@selector(screenFillChanged)];
+    self.screenFill.selectedSegmentIndex=ios::full_screen()?0:1;
+    self.quality=[self segments:@[@"Standard 1×",@"Native",@"MetalFX upscale"] action:@selector(qualityChanged)];
     self.quality.selectedSegmentIndex=[@"0" isEqualToString:[NSUserDefaults.standardUserDefaults stringForKey:@"ios.nativeResolution"]]?0:1;
     if(const char* value=getenv("WWHD_RES_SCALE"))self.quality.selectedSegmentIndex=atof(value)>1?1:0;
     if(gfx::upscale::requested())self.quality.selectedSegmentIndex=2;
-    self.upscaleQualityTitle=label(@"超分输入分辨率");
+    self.upscaleQualityTitle=label(@"Upscaler input resolution");
     self.upscaleQuality=[self segments:@[@"60%",@"65%",@"70%",@"75%",@"80%",@"85%",@"90%"] action:@selector(upscaleQualityChanged)];
     NSUserDefaults* defaults=NSUserDefaults.standardUserDefaults;
     id savedInputPercent=[defaults objectForKey:@"ios.upscaleInputPercent"];
@@ -342,59 +345,59 @@ static WWQuickControls* controls;
         ios::display::saved_upscale_ratio(savedInputPercent? (int)[savedInputPercent integerValue] : -1,
             (int)[defaults integerForKey:@"ios.upscaleQuality"]));
     self.upscaleQuality.accessibilityIdentifier=@"upscale-input-quality";
-    self.upscaleQuality.accessibilityLabel=@"超分输入比例";
+    self.upscaleQuality.accessibilityLabel=@"Upscaler input scale";
     self.resolutionNote=label(@""); self.resolutionNote.numberOfLines=0;
     self.resolutionNote.font=[UIFont systemFontOfSize:12];
     self.resolutionNote.accessibilityIdentifier=@"resolution-explanation";
-    self.save=[self button:@"存档" action:@selector(saveState)]; self.load=[self button:@"读档" action:@selector(loadState)];
+    self.save=[self button:@"Save" action:@selector(saveState)]; self.load=[self button:@"Load" action:@selector(loadState)];
     UIStackView* actions=[[UIStackView alloc] initWithArrangedSubviews:@[self.save,self.load]];
     actions.distribution=UIStackViewDistributionFillEqually; actions.spacing=10;
     [actions.heightAnchor constraintEqualToConstant:40].active=YES;
-    self.slots=[self segments:@[@"槽 1",@"槽 2",@"槽 3"] action:@selector(slotChanged)];
+    self.slots=[self segments:@[@"Slot 1",@"Slot 2",@"Slot 3"] action:@selector(slotChanged)];
     self.slots.selectedSegmentIndex=2; // visible slot 3 preserves the original backend slot 5
     self.thumbnail=[UIImageView new]; self.thumbnail.contentMode=UIViewContentModeScaleAspectFit;
     self.thumbnail.backgroundColor=[ink() colorWithAlphaComponent:.06]; self.thumbnail.clipsToBounds=YES;
-    self.thumbnail.isAccessibilityElement=YES; self.thumbnail.accessibilityLabel=@"所选槽缩略截图";
+    self.thumbnail.isAccessibilityElement=YES; self.thumbnail.accessibilityLabel=@"Selected slot thumbnail";
     [self.thumbnail.heightAnchor constraintEqualToConstant:150].active=YES;
     self.thumbnailStatus=label(@""); self.thumbnailStatus.font=[UIFont systemFontOfSize:12]; self.thumbnailStatus.numberOfLines=0;
-    self.status=label(@"手动存取 · 槽 3（保留原槽 5）"); self.status.font=[UIFont systemFontOfSize:12]; self.status.numberOfLines=0;
+    self.status=label(@"Manual save/load · slot 3 (keeps original slot 5)"); self.status.font=[UIFont systemFontOfSize:12]; self.status.numberOfLines=0;
     self.slotStatus=label(@""); self.slotStatus.font=self.status.font; self.slotStatus.numberOfLines=0;
-    UIButton* close=[self button:@"返回冒险" action:@selector(togglePanel)]; close.backgroundColor=ink();
+    UIButton* close=[self button:@"Back to adventure" action:@selector(togglePanel)]; close.backgroundColor=ink();
     [close setTitleColor:paper() forState:UIControlStateNormal]; [close.heightAnchor constraintEqualToConstant:42].active=YES;
-    UILabel* performanceNote=label(@"CPU：100% 为一个核心；GPU 显示任务区间耗时。\n内存与 Metal 共享；系统仅提供热状态，无 ℃ 读数。");
+    UILabel* performanceNote=label(@"CPU: 100% is one core; GPU shows command time per frame.\nMemory is shared with Metal; iOS reports a thermal state, not °C.");
     performanceNote.font=[UIFont systemFontOfSize:11];performanceNote.numberOfLines=2;
-    UILabel* stateNote=label(@"原版自动 / 手动存档由游戏管理，普通存档请用原游戏菜单。三槽即时存档使用独立快照文件，不自动调用原游戏保存。\n即时读档恢复内存中的旧进度，不自动回滚磁盘上的原版存档；随后主动在游戏菜单保存，会按当时进度正常写入。");
+    UILabel* stateNote=label(@"The game's own saves work as normal; use the in-game menu for regular saves. The three save-state slots are separate snapshots and don't trigger the game's save.\nLoading a save state restores progress in memory but doesn't roll back the game's save file; saving from the game menu afterwards writes the current progress as usual.");
     stateNote.font=[UIFont systemFontOfSize:12]; stateNote.numberOfLines=0;
     stateNote.accessibilityIdentifier=@"independent-save-types";
-    self.detailsButton=[self button:@"性能详情 ›" action:@selector(showDetails)];
+    self.detailsButton=[self button:@"Performance details ›" action:@selector(showDetails)];
     [self.detailsButton.heightAnchor constraintEqualToConstant:42].active=YES;
     UIStackView* screenStack=[[UIStackView alloc] initWithArrangedSubviews:@[
-        [self row:@"性能信息" control:self.performance],performanceNote,self.detailsButton,self.frameMode,
-        label(@"画面比例"),self.aspectMode,label(@"渲染分辨率"),self.quality,self.upscaleQualityTitle,self.upscaleQuality,self.resolutionNote]];
+        [self row:@"Performance overlay" control:self.performance],performanceNote,self.detailsButton,self.frameMode,
+        label(@"Screen"),self.screenFill,label(@"Aspect ratio"),self.aspectMode,label(@"Render resolution"),self.quality,self.upscaleQualityTitle,self.upscaleQuality,self.resolutionNote]];
     UIStackView* controlsStack=[[UIStackView alloc] initWithArrangedSubviews:@[
-        label(@"手柄模式"),self.controllerMode,label(@"GamePad 屏幕"),self.gamepadScreen,
-        [self row:@"手柄陀螺仪" control:self.gyro],self.gyroStatus,recalibrate,
-        label(@"触屏按键"),self.touchMode,editTouch,touchNote,self.touchMoveValue,self.touchMove,self.touchLookValue,self.touchLook,resetTouch]];
+        label(@"Controller mode"),self.controllerMode,label(@"GamePad screen"),self.gamepadScreen,
+        [self row:@"Controller gyro" control:self.gyro],self.gyroStatus,recalibrate,
+        label(@"Touch buttons"),self.touchMode,editTouch,touchNote,self.touchMoveValue,self.touchMove,self.touchLookValue,self.touchLook,resetTouch]];
     self.playTime=label(@"");
     self.playTime.numberOfLines=0;
     self.playTime.font=[UIFont monospacedDigitSystemFontOfSize:16 weight:UIFontWeightRegular];
     self.playTime.accessibilityIdentifier=@"play-time";
-    UILabel* playTimeNote=label(@"从本版开始记录，包含前台菜单与剧情；后台暂停，快进按真实时间计算。独立于存档，读档不会回退。每 30 秒及切后台时保存。");
+    UILabel* playTimeNote=label(@"Counted since this version, including menus and cutscenes; pauses in the background, fast-forward counts real time. Separate from saves, so loading doesn't rewind it. Saved every 30 s and when you leave the app.");
     playTimeNote.font=[UIFont systemFontOfSize:12]; playTimeNote.numberOfLines=0;
     UIStackView* assistStack=[[UIStackView alloc] initWithArrangedSubviews:@[
-        label(@"游戏时长"),self.playTime,playTimeNote,[self row:@"倍速功能" control:self.fastEnabled],
-        [self row:@"当前快进" control:self.fast],self.fastScope,self.rate]];
+        label(@"Play time"),self.playTime,playTimeNote,[self row:@"Fast-forward" control:self.fastEnabled],
+        [self row:@"Fast-forward now" control:self.fast],self.fastScope,self.rate]];
     UIStackView* saveStack=[[UIStackView alloc] initWithArrangedSubviews:@[
-        [self row:@"即时存档" control:self.states],stateNote,self.slots,self.slotStatus,self.thumbnail,self.thumbnailStatus,actions,self.status]];
+        [self row:@"Save states" control:self.states],stateNote,self.slots,self.slotStatus,self.thumbnail,self.thumbnailStatus,actions,self.status]];
     for(UIStackView* stack in @[screenStack,controlsStack,assistStack,saveStack]) {
         stack.axis=UILayoutConstraintAxisVertical; stack.spacing=10; stack.translatesAutoresizingMaskIntoConstraints=NO;
     }
     self.settingsPages=@[[self scrollWithContent:screenStack],[self scrollWithContent:controlsStack],
         [self scrollWithContent:assistStack],[self scrollWithContent:saveStack]];
     self.settingsScroll=self.settingsPages[0];
-    self.settingsCategory=[self segments:@[@"画面",@"操控",@"辅助",@"存档"] action:@selector(settingsCategoryChanged)];
+    self.settingsCategory=[self segments:@[@"Display",@"Controls",@"Extras",@"Save"] action:@selector(settingsCategoryChanged)];
     self.settingsCategory.selectedSegmentIndex=0;
-    self.settingsCategory.accessibilityLabel=@"设置分类";
+    self.settingsCategory.accessibilityLabel=@"Settings category";
     UIStackView* header=[[UIStackView alloc] initWithArrangedSubviews:@[title,close]];
     header.axis=UILayoutConstraintAxisHorizontal; header.alignment=UIStackViewAlignmentCenter; header.spacing=12;
     [close.widthAnchor constraintEqualToConstant:112].active=YES;
@@ -429,16 +432,16 @@ static WWQuickControls* controls;
             [page.leadingAnchor constraintEqualToAnchor:self.settingsBody.leadingAnchor],
             [page.trailingAnchor constraintEqualToAnchor:self.settingsBody.trailingAnchor]]];
     }
-    UILabel* detailsTitle=label(@"性能详情"); detailsTitle.font=title.font;
-    self.detailsText=label(@"采样中……"); self.detailsText.numberOfLines=0;
+    UILabel* detailsTitle=label(@"Performance details"); detailsTitle.font=title.font;
+    self.detailsText=label(@"Sampling…"); self.detailsText.numberOfLines=0;
     self.detailsText.font=[UIFont monospacedDigitSystemFontOfSize:14 weight:UIFontWeightRegular];
     self.detailsText.accessibilityIdentifier=@"performance-details";
     UIScrollView* detailsScroll=[self scrollWithContent:self.detailsText];
     self.detailsGraph=[WWFrameTimeGraph new]; self.detailsGraph.translatesAutoresizingMaskIntoConstraints=NO;
     [self.detailsGraph.heightAnchor constraintEqualToConstant:64].active=YES;
-    UIButton* resetStats=[self button:@"重置 FPS / Low 统计" action:@selector(resetPerformance)];
+    UIButton* resetStats=[self button:@"Reset FPS / lows" action:@selector(resetPerformance)];
     [resetStats.heightAnchor constraintEqualToConstant:34].active=YES;
-    self.detailsBack=[self button:@"返回设置" action:@selector(hideDetails)];
+    self.detailsBack=[self button:@"Back to settings" action:@selector(hideDetails)];
     [self.detailsBack.heightAnchor constraintEqualToConstant:42].active=YES;
     self.detailsPage=[[UIStackView alloc] initWithArrangedSubviews:@[detailsTitle,self.detailsGraph,resetStats,detailsScroll,self.detailsBack]];
     self.detailsPage.axis=UILayoutConstraintAxisVertical; self.detailsPage.spacing=14;
@@ -504,10 +507,10 @@ static WWQuickControls* controls;
     if(!panel_open.load()||self.settingsPage.hidden||self.settingsCategory.selectedSegmentIndex!=kSettingsAssist)return;
     const auto time=ios::play_time();
     auto duration=[](double seconds) {
-        return [NSString stringWithFormat:@"%.0f 小时 %02u 分 %02u 秒",std::floor(seconds/3600),
+        return [NSString stringWithFormat:@"%.0f h %02u min %02u s",std::floor(seconds/3600),
             (unsigned)std::fmod(seconds/60,60),(unsigned)std::fmod(seconds,60)];
     };
-    self.playTime.text=[NSString stringWithFormat:@"累计游玩  %@\n本次游玩  %@",duration(time.totalSeconds),duration(time.sessionSeconds)];
+    self.playTime.text=[NSString stringWithFormat:@"Total play  %@\nThis session  %@",duration(time.totalSeconds),duration(time.sessionSeconds)];
 }
 - (void)refresh {
     // Clamp legacy/environment values in memory without saving temporary settings.
@@ -524,8 +527,8 @@ static WWQuickControls* controls;
     self.gamepadScreen.selectedSegmentIndex=gfx::g_mode==gfx::kDrcGamePad?2:gfx::g_mode==gfx::kDrcPip?1:0;
     self.gyro.on=motion::settings().source==motion::kController;
     self.gyroStatus.text=motion::gyro_controllers()>0?
-        @"已检测到支持陀螺仪的手柄。游戏内也需开启体感；瞄准时松开右摇杆。校准时请将手柄静置。":
-        @"未检测到支持陀螺仪的手柄。可保留开关等待连接；普通按键不受影响。";
+        @"Controller with gyro detected. Also turn on motion controls in the game; let go of the right stick while aiming. Keep the controller still while calibrating.":
+        @"No controller with gyro detected. You can leave this on until one connects; buttons work normally.";
     if(panel_open.load()&&!self.settingsPage.hidden&&self.settingsCategory.selectedSegmentIndex==kSettingsScreen)
         [self refreshResolutionNote];
     self.fastScope.selectedSegmentIndex=mods::fast_forward_global()?1:0;
@@ -539,10 +542,10 @@ static WWQuickControls* controls;
     if(!panel_open.load()||self.settingsPage.hidden||self.settingsCategory.selectedSegmentIndex!=kSettingsSaves)return;
     if(!self.states.on) {
         [self.thumbnailRetryTimer invalidate]; self.thumbnailRetryTimer=nil;
-        self.thumbnail.image=nil; self.thumbnailPath=@""; self.thumbnailStatus.text=@"已有存档与截图保留";
+        self.thumbnail.image=nil; self.thumbnailPath=@""; self.thumbnailStatus.text=@"Existing save states and screenshots are kept";
         self.slotUsed=NO; self.slotCompatible=NO; self.slotPortable=NO; self.slotWhen=@""; self.slotArea=@"";
         self.save.enabled=NO; self.load.enabled=NO;
-        self.slotStatus.text=@"即时存档已关闭。已有槽位与截图会保留，重新开启后可查看。";
+        self.slotStatus.text=@"Save states are off. Existing slots and screenshots are kept and show up again when you turn this back on.";
         return;
     }
     const int selected=backend_slot(self.slots.selectedSegmentIndex);
@@ -562,8 +565,8 @@ static WWQuickControls* controls;
         }
         UIImage* image=[UIImage imageWithContentsOfFile:path];
         if(image) {
-            owner.thumbnail.image=image; owner.thumbnailStatus.text=@"所选槽截图";
-            owner.thumbnail.accessibilityValue=[NSString stringWithFormat:@"槽 %ld · %@",
+            owner.thumbnail.image=image; owner.thumbnailStatus.text=@"Selected slot screenshot";
+            owner.thumbnail.accessibilityValue=[NSString stringWithFormat:@"Slot %ld · %@",
                 (long)owner.slots.selectedSegmentIndex+1,owner.thumbnailStatus.text];
             [timer invalidate]; owner.thumbnailRetryTimer=nil;
         }
@@ -575,11 +578,11 @@ static WWQuickControls* controls;
     self.slotWhen=text(slot.when); self.slotArea=text(slot.area);
     self.save.enabled=self.states.on&&!self.saving&&!self.loading;
     self.load.enabled=self.save.enabled&&slot.used&&slot.compatible&&!slot.portable;
-    NSString* kind=!slot.used?@"空槽 · 暂无即时存档":slot.portable?@"此槽只有旧格式记录，无法即时读档":
-        !slot.compatible?@"旧格式或版本不兼容 · 无法读取":@"完整即时存档可用";
-    self.slotStatus.text=[NSString stringWithFormat:@"槽 %ld · %@\n保存时间：%@%@",
-        (long)self.slots.selectedSegmentIndex+1,kind,slot.used?(slot.when.empty()?@"未知（旧格式）":text(slot.when)):@"—",
-        slot.area.empty()?@"":[@"\n位置：" stringByAppendingString:text(slot.area)]];
+    NSString* kind=!slot.used?@"Empty slot · no save state yet":slot.portable?@"This slot only has an old-format record and can't be loaded":
+        !slot.compatible?@"Old format or incompatible version · can't load":@"Save state available";
+    self.slotStatus.text=[NSString stringWithFormat:@"Slot %ld · %@\nSaved: %@%@",
+        (long)self.slots.selectedSegmentIndex+1,kind,slot.used?(slot.when.empty()?@"unknown (old format)":text(slot.when)):@"—",
+        slot.area.empty()?@"":[@"\nLocation: " stringByAppendingString:text(slot.area)]];
     NSString* path=slot.used&&!slot.portable&&slot.thumbnail_linked?text(slot.thumbnail_path):@"";
     if(![self.thumbnailPath isEqualToString:path]) {
         [self.thumbnailRetryTimer invalidate]; self.thumbnailRetryTimer=nil;
@@ -591,9 +594,9 @@ static WWQuickControls* controls;
         if(!self.thumbnail.image)[self scheduleThumbnailRetryForPath:path];
         else { [self.thumbnailRetryTimer invalidate]; self.thumbnailRetryTimer=nil; }
     } else { [self.thumbnailRetryTimer invalidate]; self.thumbnailRetryTimer=nil; }
-    self.thumbnailStatus.text=self.thumbnail.image?@"所选槽截图":!slot.used?@"空槽 · 无截图":
-        !slot.thumbnail_linked?@"旧格式 / 缺少关联截图":@"截图待写入或不可用";
-    self.thumbnail.accessibilityValue=[NSString stringWithFormat:@"槽 %ld · %@",(long)self.slots.selectedSegmentIndex+1,self.thumbnailStatus.text];
+    self.thumbnailStatus.text=self.thumbnail.image?@"Selected slot screenshot":!slot.used?@"Empty slot · no screenshot":
+        !slot.thumbnail_linked?@"Old format / no linked screenshot":@"Screenshot pending or unavailable";
+    self.thumbnail.accessibilityValue=[NSString stringWithFormat:@"Slot %ld · %@",(long)self.slots.selectedSegmentIndex+1,self.thumbnailStatus.text];
     self.save.alpha=self.save.enabled?1:.4; self.load.alpha=self.load.enabled?1:.4;
 }
 
@@ -613,20 +616,20 @@ static WWQuickControls* controls;
 - (void)refreshHUD {
     if(!self.performance.on)return;
     NSDictionary* m=self.metrics;
-    NSArray<NSString*>* thermal=@[@"正常",@"温热",@"严重",@"临界"];
+    NSArray<NSString*>* thermal=@[@"Normal",@"Warm",@"Serious",@"Critical"];
     NSNumber* cpuValue=m[@"processCPUPercent"];
     const double cpu=[cpuValue isKindOfClass:NSNumber.class]?cpuValue.doubleValue:-1;
-    NSString* cpuText=std::isfinite(cpu)&&cpu>=0?[NSString stringWithFormat:@"%.0f%%",cpu]:@"不可用";
+    NSString* cpuText=std::isfinite(cpu)&&cpu>=0?[NSString stringWithFormat:@"%.0f%%",cpu]:@"unavailable";
     NSNumber* gpuValue=m[@"gpuIntervalMsPerFrame"];
     const double gpuMs=[gpuValue isKindOfClass:NSNumber.class]?gpuValue.doubleValue:-1;
-    NSString* gpu=std::isfinite(gpuMs)&&gpuMs>=0?[NSString stringWithFormat:@"%.2f ms/帧",gpuMs]:@"采样中";
+    NSString* gpu=std::isfinite(gpuMs)&&gpuMs>=0?[NSString stringWithFormat:@"%.2f ms/frame",gpuMs]:@"sampling";
     NSDictionary* frames=[m[@"frameStatistics"] isKindOfClass:NSDictionary.class]?m[@"frameStatistics"]:nil;
-    self.hud.text=[NSString stringWithFormat:@"  显示 %@ · 输出 %@\n  AVG %@ · 1%% Low %@\n  0.1%% Low %@ · 帧时 %@\n  逻辑 %@ · %@ · 热 %@\n  CPU %@（单核）· GPU %@\n  内存 %@ · 余量 %@\n  Metal %@（共享）· %.0f×%.0f",
+    self.hud.text=[NSString stringWithFormat:@"  Display %@ · Output %@\n  AVG %@ · 1%% Low %@\n  0.1%% Low %@ · Frame %@\n  Logic %@ · %@ · Thermal %@\n  CPU %@ (1 core) · GPU %@\n  Mem %@ · Free %@\n  Metal %@ (shared) · %.0f×%.0f",
         rate_reading(m,@"sampleDisplayedFPS",@"FPS"),rate_reading(m,@"sampleFPS",@"FPS"),
         rate_reading(frames,@"averageFPS",@"FPS"),rate_reading(frames,@"low1FPS",@"FPS"),
         rate_reading(frames,@"low01FPS",@"FPS"),milliseconds(metric_number(frames,@"currentMs")),
         rate_reading(m,@"sampleExecutedStepsPerSecond",@"Hz"),
-        mods::fast_forward_active()?[NSString stringWithFormat:@"快进 %u×",mods::fast_forward_rate()]:@"正常速度",
+        mods::fast_forward_active()?[NSString stringWithFormat:@"Fast %u×",mods::fast_forward_rate()]:@"Normal speed",
         thermal[std::clamp((int)NSProcessInfo.processInfo.thermalState,0,3)],cpuText,gpu,
         memory_size(metric_number(m,@"physicalFootprint")),memory_size(metric_number(m,@"availableMemoryBytes")),
         memory_size(metric_number(m,@"metalAllocatedBytes")),
@@ -640,26 +643,26 @@ static WWQuickControls* controls;
     if(!panel_open.load()||self.detailsPage.hidden)return;
     NSDictionary* m=self.metrics;
     const double cpu=metric_number(m,@"processCPUPercent"),cores=metric_number(m,@"processorCount");
-    NSString* cpuText=cpu>=0?[NSString stringWithFormat:@"%.1f%%",cpu]:@"不可用";
-    NSString* allCores=cpu>=0&&cores>0?[NSString stringWithFormat:@"%.1f%%（按 %.0f 核换算）",cpu/cores,cores]:@"不可用";
+    NSString* cpuText=cpu>=0?[NSString stringWithFormat:@"%.1f%%",cpu]:@"unavailable";
+    NSString* allCores=cpu>=0&&cores>0?[NSString stringWithFormat:@"%.1f%% (of %.0f cores)",cpu/cores,cores]:@"unavailable";
     NSDictionary* gpu=[m[@"gpuCommandInterval"] isKindOfClass:NSDictionary.class]?m[@"gpuCommandInterval"]:nil;
     const double recent=metric_number(gpu,@"currentMs"),average=metric_number(gpu,@"averageMs");
     const int target=target_fps();
     const double budgetMs=1000.0/target;
-    NSString* budget=recent>=0&&average>=0?[NSString stringWithFormat:@"最近 %.1f%% · 均值 %.1f%%",recent/budgetMs*100,average/budgetMs*100]:@"采样中";
-    NSString* device=[m[@"gpuDeviceName"] isKindOfClass:NSString.class]?m[@"gpuDeviceName"]:@"不可用";
-    NSString* output=[NSString stringWithFormat:@"显示 %@\n输出 %@\n逻辑 %@\n刷新回调 %@ · 请求 %@",
+    NSString* budget=recent>=0&&average>=0?[NSString stringWithFormat:@"Recent %.1f%% · average %.1f%%",recent/budgetMs*100,average/budgetMs*100]:@"sampling";
+    NSString* device=[m[@"gpuDeviceName"] isKindOfClass:NSString.class]?m[@"gpuDeviceName"]:@"unavailable";
+    NSString* output=[NSString stringWithFormat:@"Display %@\nOutput %@\nLogic %@\nRefresh callback %@ · requested %@",
         rate_reading(m,@"sampleDisplayedFPS",@"FPS"),rate_reading(m,@"sampleFPS",@"FPS"),
         rate_reading(m,@"sampleExecutedStepsPerSecond",@"Hz"),rate_reading(m,@"displayLinkHz",@"Hz"),
         rate_reading(m,@"requestedRefreshHz",@"Hz")];
-    NSArray<NSString*>* thermal=@[@"正常",@"温热",@"严重",@"临界"];
+    NSArray<NSString*>* thermal=@[@"Normal",@"Warm",@"Serious",@"Critical"];
     NSDictionary* frames=[m[@"frameStatistics"] isKindOfClass:NSDictionary.class]?m[@"frameStatistics"]:nil;
     NSArray* graph=[frames[@"graphMs"] isKindOfClass:NSArray.class]?frames[@"graphMs"]:@[];
     self.detailsGraph.samples=graph; self.detailsGraph.budget=budgetMs; [self.detailsGraph setNeedsDisplay];
     NSString* frameText=[NSString stringWithFormat:
-        @"FPS / 帧时间\n平均 %@\n1%% Low %@\n0.1%% Low %@\n最小 %@ · 最大 %@\n"
-         "最近 %@ · 平均 %@\nP99 %@ · P99.9 %@\n最慢帧 %@\n长帧 %.0f（超过目标帧预算 1.5×）\n"
-         "窗口 %.1f 秒 · %.0f 个有效帧间隔\n渲染 %.0f × %.0f · 屏幕 %.0f × %.0f\n\n",
+        @"FPS / frame time\nAverage %@\n1%% Low %@\n0.1%% Low %@\nMin %@ · Max %@\n"
+         "Recent %@ · average %@\nP99 %@ · P99.9 %@\nSlowest frame %@\nLong frames %.0f (over 1.5× frame budget)\n"
+         "Window %.1f s · %.0f valid frame intervals\nRender %.0f × %.0f · Screen %.0f × %.0f\n\n",
         rate_reading(frames,@"averageFPS",@"FPS"),rate_reading(frames,@"low1FPS",@"FPS"),rate_reading(frames,@"low01FPS",@"FPS"),
         rate_reading(frames,@"minimumFPS",@"FPS"),rate_reading(frames,@"maximumFPS",@"FPS"),
         milliseconds(metric_number(frames,@"currentMs")),milliseconds(metric_number(frames,@"averageMs")),
@@ -668,23 +671,23 @@ static WWQuickControls* controls;
         std::max(0.0,metric_number(m,@"renderWidth")),std::max(0.0,metric_number(m,@"renderHeight")),
         std::max(0.0,metric_number(m,@"drawableWidth")),std::max(0.0,metric_number(m,@"drawableHeight"))];
     if(gfx::upscale::requested()) frameText=[frameText stringByAppendingFormat:
-        @"MetalFX 空间超分（测试版）\n%@\n\n",upscale_status_text()];
+        @"MetalFX spatial upscaling (beta)\n%@\n\n",upscale_status_text()];
     self.detailsText.text=[NSString stringWithFormat:
-        @"%@CPU 进程用量\n%@（单核 100%%）\n%@\n进程 CPU 时间 %@ / 输出帧\n\n"
-         "游戏线程 CPU\n%@\n\n渲染线程 CPU\n%@\n\n"
-         "GPU · %@\n命令区间 / 输出帧\n%@\n有效目标 %d FPS · 帧预算 %.2f ms\n区间预算比：%@\n\n"
-         "内存（统一共享）\n进程占用 %@ · 采样峰值 %@\n驻留 %@ · 压缩 %@\nMetal 当前分配 %@ · 采样峰值 %@\n设备物理内存 %@\nApp 可用余量 %@\n建议 Metal 工作集 %@\n\n"
-         "输出与热状态\n%@\n系统热状态：%@\n\n"
-         "读数说明\n每 2 秒刷新；均值最多覆盖 120 个有效样本，未满时按已有样本计算。\n"
-         "FPS / Low 使用最近约60秒的实际显示帧间隔；1%% / 0.1%% Low 是最慢1%% / 0.1%%帧耗时均值的倒数，至少需要100 / 1000个间隔。P99 / P99.9 是帧时间百分位，采样不足显示采样中。\n"
-         "曲线按最近10秒分箱取峰值以保留卡顿；黄色线为目标帧预算。切后台、关闭采样或点击重置后重新积累。采样峰值只包含性能采样期间。\n"
-         "显示 FPS 仅按有效且递增的实际显示时间戳计算；缺样本时显示采样中。输出 FPS 是渲染帧计数；逻辑 Hz 是实际执行的游戏逻辑步数。\n"
-         "刷新回调与请求频率都不等于游戏实际显示 FPS；有效目标帧预算计入屏幕上限和快进。\n"
-         "线程 CPU 是帧回调间的线程运行时间，排除睡眠和等待；快进时游戏回调与输出帧可能不一一对应。\n"
-         "GPU 命令区间含队列停顿，区间预算比不是 GPU 全芯片占用率，超过 100%% 代表区间超过帧预算。\n"
-         "CPU 总比例仅按核心数换算，不是整机负载；不同核心性能不同。\n"
-         "Metal 与进程内存有重叠，不能相加；可用余量和建议工作集不是预留内存。\n"
-         "CPU/GPU 频率、GPU 全芯片占用率和摄氏温度没有可用公开读数。",
+        @"%@CPU (process)\n%@ (100%% = 1 core)\n%@\nProcess CPU time %@ / output frame\n\n"
+         "Game thread CPU\n%@\n\nRender thread CPU\n%@\n\n"
+         "GPU · %@\nCommand time / output frame\n%@\nTarget %d FPS · frame budget %.2f ms\nShare of budget: %@\n\n"
+         "Memory (unified)\nProcess %@ · peak %@\nResident %@ · compressed %@\nMetal allocated %@ · peak %@\nDevice RAM %@\nApp headroom %@\nRecommended Metal working set %@\n\n"
+         "Output and thermal\n%@\nThermal state: %@\n\n"
+         "About these numbers\nUpdated every 2 s; averages cover up to 120 valid samples.\n"
+         "FPS / lows use about the last 60 s of displayed frames; 1%% / 0.1%% Low need at least 100 / 1000 intervals. P99 / P99.9 are frame-time percentiles.\n"
+         "The graph shows peaks over the last 10 s so stutters stay visible; the yellow line is the frame budget. Stats restart after backgrounding or Reset.\n"
+         "Display FPS uses real presentation timestamps; Output FPS counts rendered frames; Logic Hz counts game logic steps.\n"
+         "Refresh callback and requested rates aren't the displayed FPS; the frame budget accounts for the screen limit and fast-forward.\n"
+         "Thread CPU is running time between frames, excluding sleeps and waits.\n"
+         "GPU command time includes queue stalls and is not GPU utilization; over 100%% means it exceeded the frame budget.\n"
+         "The all-core CPU figure is a simple conversion, not total system load.\n"
+         "Metal and process memory overlap, so don't add them.\n"
+         "iOS doesn't expose CPU/GPU clocks, GPU utilization or temperatures.",
         frameText,cpuText,allCores,milliseconds(metric_number(m,@"processCPUMsPerFrame")),
         interval_details(m,@"gameThreadCPU"),interval_details(m,@"renderThreadCPU"),device,
         interval_details(m,@"gpuCommandInterval"),target,budgetMs,budget,
@@ -697,7 +700,7 @@ static WWQuickControls* controls;
 }
 - (void)resetPerformance {
     ios::reset_performance_window(); self.metrics=nil;
-    self.status.text=@"FPS / Low 统计已重置，正在重新采样。";
+    self.status.text=@"FPS / lows reset; sampling again.";
     ios::update_controls(@{});
 }
 - (void)scopeChanged {
@@ -721,7 +724,7 @@ static WWQuickControls* controls;
 - (void)controllerChanged {
     bool pro=self.controllerMode.selectedSegmentIndex==1;
     hostui::set_pro_controller(pro); persist_setting("proController",pro?"1":"0");
-    self.status.text=@"手柄模式已选择；剧情结束后应用切换。";
+    self.status.text=@"Controller mode selected; it switches after the current cutscene.";
 }
 - (void)gamepadScreenChanged {
     const int modes[]={gfx::kDrcAuto,gfx::kDrcPip,gfx::kDrcGamePad};
@@ -738,12 +741,12 @@ static WWQuickControls* controls;
     [self refresh];
 }
 - (void)recalibrateGyro {
-    motion::recalibrate(); self.status.text=@"请将手柄静置片刻，系统会重新估计陀螺仪偏移。";
+    motion::recalibrate(); self.status.text=@"Keep the controller still for a moment while the gyro recalibrates.";
 }
 - (void)frameChanged {
     const int selected=std::clamp((int)self.frameMode.selectedSegmentIndex,0,1);
     self.frameMode.selectedSegmentIndex=selected;
-    self.status.text=selected?@"帧率已选择：60 FPS":@"帧率已选择：30 FPS";
+    self.status.text=selected?@"Frame rate: 60 FPS":@"Frame rate: 30 FPS";
     interp::set_fps(60); interp::set_mode(selected?1:0);
     persist_setting("ios.interpFps","60");
     persist_setting("ios.frameMode",selected?"1":"0");
@@ -767,6 +770,13 @@ static WWQuickControls* controls;
         (int)self.upscaleQuality.selectedSegmentIndex)));
     [self qualityChanged];
 }
+- (void)screenFillChanged {
+    const bool full=self.screenFill.selectedSegmentIndex==0;
+    ios::set_full_screen(full);
+    persist_setting("ios.screenFill",full?"full":"safe");
+    // The game view changed shape: recompute the render size for the chosen resolution tier.
+    [self qualityChanged];
+}
 - (void)aspectChanged {
     const bool original=self.aspectMode.selectedSegmentIndex==1;
     aspect::set_mode(original?aspect::kOriginal:aspect::kWindow);
@@ -787,14 +797,14 @@ static WWQuickControls* controls;
         :ios::display::render_scale(native,size.width,size.height,a);
     const float nativeScale=ios::display::native_scale(size.width,size.height,a);
     const float actualInputRatio=scale/std::max(1.f,nativeScale);
-    NSString* tier=native?@"屏幕原生：更清晰，GPU 和内存开销更高。":@"标准：较低分辨率渲染后放大，优先节省 GPU 和内存。";
+    NSString* tier=native?@"Native: sharper, uses more GPU and memory.":@"Standard: renders lower and scales up to save GPU and memory.";
     if(self.quality.selectedSegmentIndex==2) tier=[NSString stringWithFormat:
-        @"MetalFX 空间超分（测试版）：所选输入 %.0f%%，当前实际约 %.0f%% 屏幕边长；先抗锯齿，再重建到屏幕尺寸。\n%@",
+        @"MetalFX upscaling (beta): input %.0f%%, currently about %.0f%% of screen size; anti-aliased, then rebuilt at screen size.\n%@",
         inputRatio*100,actualInputRatio*100,upscale_status_text()];
     if(self.quality.selectedSegmentIndex==2) tier=[tier stringByAppendingFormat:
-        @"\n重建输出目标约 %.0f × %.0f",std::min(double(size.width),double(size.height)*a),
+        @"\nOutput target about %.0f × %.0f",std::min(double(size.width),double(size.height)*a),
         std::min(double(size.height),double(size.width)/a)];
-    self.resolutionNote.text=[NSString stringWithFormat:@"比例控制视野与布局，分辨率控制像素数量。\n%@\n所选设置目标约 %.0f × %.0f；原生倍率最低 1×。",tier,
+    self.resolutionNote.text=[NSString stringWithFormat:@"Aspect sets the view and layout; resolution sets the pixel count.\n%@\nTarget about %.0f × %.0f; native is at least 1×.",tier,
         std::max(1280.f,720.f*a)*scale,std::max(720.f,1280.f/a)*scale];
 }
 - (void)touchChanged {
@@ -804,8 +814,8 @@ static WWQuickControls* controls;
 - (void)refreshTouchSensitivity {
     self.touchMove.value=ios::touch_move_sensitivity();
     self.touchLook.value=ios::touch_look_sensitivity();
-    self.touchMoveValue.text=[NSString stringWithFormat:@"移动摇杆响应  %.2f×",self.touchMove.value];
-    self.touchLookValue.text=[NSString stringWithFormat:@"镜头灵敏度  %.2f×",self.touchLook.value];
+    self.touchMoveValue.text=[NSString stringWithFormat:@"Move stick response  %.2f×",self.touchMove.value];
+    self.touchLookValue.text=[NSString stringWithFormat:@"Camera sensitivity  %.2f×",self.touchLook.value];
     self.touchMove.accessibilityLabel=self.touchMoveValue.text;
     self.touchLook.accessibilityLabel=self.touchLookValue.text;
 }
@@ -818,10 +828,10 @@ static WWQuickControls* controls;
     ios::edit_touch_layout();
 }
 - (void)resetTouchConfiguration {
-    UIAlertController* alert=[UIAlertController alertControllerWithTitle:@"恢复触屏默认设置？"
-        message:@"将重置按钮位置、大小、绑定功能与灵敏度。" preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"恢复默认" style:UIAlertActionStyleDestructive handler:^(UIAlertAction*) {
+    UIAlertController* alert=[UIAlertController alertControllerWithTitle:@"Reset touch controls?"
+        message:@"This resets button positions, sizes, functions and sensitivity." preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive handler:^(UIAlertAction*) {
         ios::reset_touch_configuration(); [self refreshTouchSensitivity];
     }]];
     [self.controller presentViewController:alert animated:YES completion:nil];
@@ -835,10 +845,10 @@ static WWQuickControls* controls;
     if(!self.save.enabled||self.saving||self.loading)return;
     const int selected=backend_slot(self.slots.selectedSegmentIndex);
     if(ss::slot_info(selected).used||ss::full_slot_info(selected).used) {
-        UIAlertController* alert=[UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"覆盖槽 %d？",visible_slot(selected)]
-            message:@"将把新的完整快照写入此槽，并覆盖同槽旧完整快照。其他槽及旧 portable 文件会保留。" preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-        [alert addAction:[UIAlertAction actionWithTitle:@"覆盖存档" style:UIAlertActionStyleDestructive handler:^(UIAlertAction*) {
+        UIAlertController* alert=[UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Overwrite slot %d?",visible_slot(selected)]
+            message:@"A new save state will replace the one in this slot. Other slots are kept." preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Overwrite" style:UIAlertActionStyleDestructive handler:^(UIAlertAction*) {
             [self performSaveSlot:selected];
         }]];
         [self.controller presentViewController:alert animated:YES completion:nil];
@@ -846,17 +856,17 @@ static WWQuickControls* controls;
 }
 - (void)performSaveSlot:(int)selected {
     if(self.saving||self.loading||!self.states.on)return;
-    self.saving=YES; self.status.text=[NSString stringWithFormat:@"正在保存槽 %d……",visible_slot(selected)]; [self refresh];
+    self.saving=YES; self.status.text=[NSString stringWithFormat:@"Saving slot %d…",visible_slot(selected)]; [self refresh];
     __weak WWQuickControls* weakSelf=self;
     ss::request_save_full(selected,[weakSelf,selected](bool ok,const std::string& why) {
         NSString* failure=state_failure(why,false);
         dispatch_async(dispatch_get_main_queue(),^{
             WWQuickControls* owner=weakSelf; if(!owner)return;
-            owner.saving=NO; owner.status.text=ok?[NSString stringWithFormat:@"即时存档已保存 · 槽 %d（截图可能仍在写入）",visible_slot(selected)]:[NSString stringWithFormat:@"槽 %d 保存未完成：%@",visible_slot(selected),failure];
+            owner.saving=NO; owner.status.text=ok?[NSString stringWithFormat:@"Save state saved · slot %d (screenshot may still be writing)",visible_slot(selected)]:[NSString stringWithFormat:@"Slot %d not saved: %@",visible_slot(selected),failure];
             [owner refresh];
             if(getenv("WWHD_IOS_TEST_QUICK_SAVE")&&getenv("WWHD_IOS_TEST_QUICK_LOAD")) {
                 owner.quickStateResult=[@{@"saveOK":@(ok),@"loadOK":ok?(id)NSNull.null:@NO,
-                    @"why":ok?@"等待读取结果":failure,@"trigger":@"save callback then shared native load method"} mutableCopy];
+                    @"why":ok?@"waiting for load result":failure,@"trigger":@"save callback then shared native load method"} mutableCopy];
                 [owner writeQuickStateResult];
                 if(ok) {
                     owner.settingsCategory.selectedSegmentIndex=kSettingsSaves;
@@ -877,7 +887,7 @@ static WWQuickControls* controls;
 - (void)performLoadState {
     [self refresh];
     if(!self.load.enabled) {
-        self.status.text=@"未读取：当前槽位不可用、格式不支持或正在存取，请查看槽位说明。";
+        self.status.text=@"Not loaded: this slot is unavailable, unsupported or busy. See the slot details.";
         if(self.quickStateResult) {
             self.quickStateResult[@"loadOK"]=@NO; self.quickStateResult[@"why"]=self.status.text;
             [self writeQuickStateResult]; self.quickStateResult=nil;
@@ -885,7 +895,7 @@ static WWQuickControls* controls;
         return;
     }
     const int selected=backend_slot(self.slots.selectedSegmentIndex);
-    self.loading=YES; self.status.text=[NSString stringWithFormat:@"正在读取槽 %d……",visible_slot(selected)];
+    self.loading=YES; self.status.text=[NSString stringWithFormat:@"Loading slot %d…",visible_slot(selected)];
     mods::set_fast_forward_latched(false); [self refresh];
     __weak WWQuickControls* weakSelf=self;
     ss::request_load_full(selected,[weakSelf,selected](bool ok,const std::string& why) {
@@ -898,8 +908,8 @@ static WWQuickControls* controls;
 }
 - (void)finishLoadSlot:(int)selected ok:(BOOL)ok why:(NSString*)failure {
     self.loading=NO;
-    self.status.text=ok?[NSString stringWithFormat:@"即时存档已恢复 · 槽 %d",visible_slot(selected)]:
-        [NSString stringWithFormat:@"槽 %d 未读取：%@",visible_slot(selected),failure.length?failure:@"恢复被拒绝"];
+    self.status.text=ok?[NSString stringWithFormat:@"Save state loaded · slot %d",visible_slot(selected)]:
+        [NSString stringWithFormat:@"Slot %d not loaded: %@",visible_slot(selected),failure.length?failure:@"load refused"];
     // Preserve terminal evidence across app restarts; never touch the snapshot or test the logger on user results.
     if(!testing_controls) {
         NSDictionary* result=@{@"visibleSlot":@(visible_slot(selected)),@"backendSlot":@(selected),
@@ -929,9 +939,9 @@ static WWQuickControls* controls;
 }
 - (void)loadState {
     if(!self.load.enabled)return;
-    UIAlertController* alert=[UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"读取槽 %ld 的即时存档？",(long)self.slots.selectedSegmentIndex+1] message:@"将回到上次即时存档的位置，当前未保存的进度会丢失。跨场景或不同版本可能无法读取，重要进度仍用游戏内存档。" preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"读取" style:UIAlertActionStyleDefault handler:^(UIAlertAction*) {
+    UIAlertController* alert=[UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Load the save state in slot %ld?",(long)self.slots.selectedSegmentIndex+1] message:@"You'll go back to that save state and lose unsaved progress. Save states may not load across versions; use in-game saves for important progress." preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Load" style:UIAlertActionStyleDefault handler:^(UIAlertAction*) {
         [self performLoadState];
     }]];
     [self.controller presentViewController:alert animated:YES completion:nil];
@@ -1010,7 +1020,7 @@ NSDictionary* controls_state() {
         @"instantStatesEnabled":@(ss::instant_states_enabled()),
         @"targetFPS":@(target_fps()),@"rayReflectionsRequested":@(gfx::ray_reflections::requested()),
         @"rayReflectionsAvailable":@(gfx::ray_reflections::available()),@"rayReflectionsActive":@(gfx::ray_reflections::active()),
-        @"rayReflectionsStatus":@"已移除",
+        @"rayReflectionsStatus":@"removed",
         @"upscaleInputRatio":@(ios::display::upscale_ratio((int)controls.upscaleQuality.selectedSegmentIndex)),
         @"resolutionMode":@(controls.quality.selectedSegmentIndex),@"aspectMode":@(aspect::mode()),@"nativeResolutionSelected":@(controls.quality.selectedSegmentIndex==1),
         @"resolutionNote":controls.resolutionNote.text?:@"",
@@ -1078,8 +1088,8 @@ void test_controls() {
         NSUInteger visible=0; for(UIScrollView* page in controls.settingsPages)if(!page.hidden)++visible;
         check(controls.settingsScroll==controls.settingsPages[i]&&visible==1,
             @"Each settings category selects exactly one independent scroll page");
-        if(i==kSettingsAssist)check([controls.playTime.text containsString:@"累计游玩"]&&
-            [controls.playTime.text containsString:@"本次游玩"],@"Auxiliary settings display total and session play time");
+        if(i==kSettingsAssist)check([controls.playTime.text containsString:@"Total play"]&&
+            [controls.playTime.text containsString:@"This session"],@"Auxiliary settings display total and session play time");
         [controls.controller.view layoutIfNeeded];
         if(i==0)categoryPanelWidth=controls.panel.bounds.size.width;
         check(std::abs(controls.panel.bounds.size.width-categoryPanelWidth)<.5,@"Settings categories keep a stable panel width");
@@ -1110,47 +1120,47 @@ void test_controls() {
     check(controls.settingsPage.hidden&&!controls.detailsPage.hidden&&controls_block_input(),
           @"Opening performance details displays the details page, not a hidden-settings update");
     update_controls(@{});
-    check([controls.detailsText.text containsString:@"不可用"]&&[controls.detailsText.text containsString:@"采样中"],
+    check([controls.detailsText.text containsString:@"unavailable"]&&[controls.detailsText.text containsString:@"sampling"],
         @"Missing detail readings show unavailable or sampling");
-    check([controls.hud.text containsString:@"CPU 不可用"],@"Missing CPU sample shows unavailable");
-    check([controls.hud.text containsString:@"显示 采样中"]&&[controls.detailsText.text containsString:@"显示 采样中"],
+    check([controls.hud.text containsString:@"CPU unavailable"],@"Missing CPU sample shows unavailable");
+    check([controls.hud.text containsString:@"Display sampling"]&&[controls.detailsText.text containsString:@"Display sampling"],
         @"Missing actual display timestamps never fall back to maximum refresh or output FPS");
     update_controls(@{@"sampleDisplayedFPS":@59.5,@"sampleFPS":@60,@"sampleExecutedStepsPerSecond":@30,
         @"displayLinkHz":@60,@"requestedRefreshHz":@60});
-    check([controls.hud.text containsString:@"显示 59.5 FPS"]&&[controls.hud.text containsString:@"输出 60.0 FPS"]&&
-          [controls.hud.text containsString:@"逻辑 30.0 Hz"]&&[controls.hud.text componentsSeparatedByString:@"\n"].count==7,
+    check([controls.hud.text containsString:@"Display 59.5 FPS"]&&[controls.hud.text containsString:@"Output 60.0 FPS"]&&
+          [controls.hud.text containsString:@"Logic 30.0 Hz"]&&[controls.hud.text componentsSeparatedByString:@"\n"].count==7,
         @"Seven-line HUD distinguishes display, render, lows and game logic");
-    check([controls.detailsText.text containsString:@"刷新回调 60.0 Hz · 请求 60.0 Hz"],@"Details distinguish refresh hints from actual display FPS");
+    check([controls.detailsText.text containsString:@"Refresh callback 60.0 Hz · requested 60.0 Hz"],@"Details distinguish refresh hints from actual display FPS");
     update_controls(@{@"sampleDisplayedFPS":@(-1),@"sampleFPS":@60,@"displayMaximumHz":@60});
-    check([controls.hud.text containsString:@"显示 采样中"],@"Unavailable actual display FPS does not use submitted frames or maximum Hz");
+    check([controls.hud.text containsString:@"Display sampling"],@"Unavailable actual display FPS does not use submitted frames or maximum Hz");
     update_controls(@{@"processCPUPercent":@(-1)});
-    check([controls.hud.text containsString:@"CPU 不可用"],@"Negative CPU sample shows unavailable");
+    check([controls.hud.text containsString:@"CPU unavailable"],@"Negative CPU sample shows unavailable");
     update_controls(@{@"frameStatistics":@{@"samples":@1500,@"seconds":@25,@"averageFPS":@59.8,
         @"low1FPS":@50,@"low01FPS":@28,@"currentMs":@16.67,@"graphMs":@[@16.67,@33.3,@16.67]}});
     check([controls.hud.text containsString:@"1% Low 50.0 FPS"]&&[controls.hud.text containsString:@"0.1% Low 28.0 FPS"]&&
-        [controls.detailsText.text containsString:@"平均 59.8 FPS"]&&controls.hudGraph.samples.count==3,
+        [controls.detailsText.text containsString:@"Average 59.8 FPS"]&&controls.hudGraph.samples.count==3,
         @"HUD, details and graph consume real frame statistics without substituting output FPS");
     const uint64_t generation=perf::generation(); [controls resetPerformance];
-    check(perf::generation()!=generation&&[controls.hud.text containsString:@"1% Low 采样中"]&&controls.hudGraph.samples.count==0,
+    check(perf::generation()!=generation&&[controls.hud.text containsString:@"1% Low sampling"]&&controls.hudGraph.samples.count==0,
         @"Reset clears visible low statistics and starts a new sampling generation");
     update_controls(@{@"processCPUPercent":@450,@"processorCount":@9,
         @"gpuCommandInterval":@{@"currentMs":@8,@"averageMs":@4,@"samples":@12}});
-    check([controls.detailsText.text containsString:@"50.0%（按 9 核换算）"],@"CPU full-core conversion is correct");
+    check([controls.detailsText.text containsString:@"50.0% (of 9 cores)"],@"CPU full-core conversion is correct");
     for(int i=0;i<2;++i) {
         controls.frameMode.selectedSegmentIndex=i; [controls.frameMode sendActionsForControlEvents:UIControlEventValueChanged];
         check(interp::mode()==i&&interp::fps()==60&&controls.frameMode.selectedSegmentIndex==i,
             @"30/60 selection always keeps interpolation FPS at 60");
         const int effective=target_fps();
-        NSString* ratio=[NSString stringWithFormat:@"最近 %.1f%% · 均值 %.1f%%",8*effective/10.0,4*effective/10.0];
+        NSString* ratio=[NSString stringWithFormat:@"Recent %.1f%% · average %.1f%%",8*effective/10.0,4*effective/10.0];
         check([controls.detailsText.text containsString:ratio],@"GPU budget follows effective target including display cap and fast-forward");
-        NSString* budget=[NSString stringWithFormat:@"有效目标 %d FPS · 帧预算 %.2f ms",effective,1000.0/effective];
+        NSString* budget=[NSString stringWithFormat:@"Target %d FPS · frame budget %.2f ms",effective,1000.0/effective];
         check([controls.detailsText.text containsString:budget],@"Budget label uses effective output target immediately after segment change");
     }
     check(ios::pacing::target_output_fps(1,60,2,true)==60&&ios::pacing::target_output_fps(1,60,1,false)==60&&
           ios::pacing::target_output_fps(0,60,1,false)==30,@"Budget follows 30/60 mode and fast-forward target");
-    check([state_failure("game save in progress",false) containsString:@"游戏正在保存"]&&
-          [state_failure("game save in progress",true) containsString:@"再读取"],@"Save transaction refusals have concise Chinese reasons");
-    check([controls.detailsText.text containsString:@"不是 GPU 全芯片占用率"],@"GPU interval is clearly distinguished from hardware load");
+    check([state_failure("game save in progress",false) containsString:@"The game is saving"]&&
+          [state_failure("game save in progress",true) containsString:@"load again"],@"Save transaction refusals have concise Chinese reasons");
+    check([controls.detailsText.text containsString:@"not GPU utilization"],@"GPU interval is clearly distinguished from hardware load");
     update_controls(savedMetrics?:@{});
     [controls.detailsBack sendActionsForControlEvents:UIControlEventTouchUpInside];
     check(controls.detailsPage.hidden&&!controls.settingsPage.hidden,@"Detail checks return to the selected settings category");
@@ -1208,7 +1218,7 @@ void test_controls() {
         NSString* path=[fixture stringByAppendingPathComponent:[NSString stringWithFormat:@"slot-%d.png",i]];
         sample.thumbnail_path=path.UTF8String;
         [controls renderSlot:sample];
-        check(!controls.thumbnail.image&&[controls.thumbnailStatus.text containsString:@"待写入"],@"Pending image never reuses previous slot thumbnail");
+        check(!controls.thumbnail.image&&[controls.thumbnailStatus.text containsString:@"pending"],@"Pending image never reuses previous slot thumbnail");
         UIImage* image=[fixtureRenderer imageWithActions:^(UIGraphicsImageRendererContext* context) {
             [[UIColor colorWithRed:i==0 green:i==1 blue:i==2 alpha:1] setFill];
             UIRectFill(CGRectMake(0,0,16,9));
@@ -1227,9 +1237,9 @@ void test_controls() {
             @"Switching back restores each slot's own time and image");
     }
     ss::SlotInfo legacy; legacy.used=true; legacy.compatible=false; [controls renderSlot:legacy];
-    check(!controls.load.enabled&&!controls.thumbnail.image&&[controls.thumbnailStatus.text containsString:@"旧格式"],@"Legacy incompatible slot has no guessed thumbnail");
+    check(!controls.load.enabled&&!controls.thumbnail.image&&[controls.thumbnailStatus.text containsString:@"Old format"],@"Legacy incompatible slot has no guessed thumbnail");
     ss::SlotInfo empty; [controls renderSlot:empty];
-    check(!controls.load.enabled&&!controls.thumbnail.image&&[controls.slotStatus.text containsString:@"空槽"],@"Empty slot clears previous time and image");
+    check(!controls.load.enabled&&!controls.thumbnail.image&&[controls.slotStatus.text containsString:@"Empty slot"],@"Empty slot clears previous time and image");
     [NSFileManager.defaultManager removeItemAtPath:fixture error:nil];
     controls.slots.selectedSegmentIndex=selectedSlot; [controls refresh];
     controls.loading=YES; [controls refresh];
@@ -1329,7 +1339,7 @@ void test_controls() {
                                 controls.states.on=YES; [controls.states sendActionsForControlEvents:UIControlEventValueChanged];
                                 int unused=-1;
                                 for(int i=0;i<3;++i)if(!ss::slot_info(backend_slot(i)).used&&!ss::full_slot_info(backend_slot(i)).used) { unused=i; break; }
-                                if(unused<0) { controls.status.text=@"自动存取测试跳过：三个槽均已有记录，不覆盖用户存档。"; return; }
+                                if(unused<0) { controls.status.text=@"Auto save/load test skipped: all three slots are in use and won't be overwritten."; return; }
                                 controls.slots.selectedSegmentIndex=unused; [controls refresh];
                                 [controls.save sendActionsForControlEvents:UIControlEventTouchUpInside];
                             }];
