@@ -315,11 +315,11 @@ static void capture_ios_live_present_texture(id<MTLTexture> texture, const std::
         LOG("[ios-live-input] final screenshot skipped: readback allocation failed");
         return;
     }
-    id<MTLBlitCommandEncoder> blit = blit_encoder();
+    id<MTLBlitCommandEncoder> blit = [command_buffer() blitCommandEncoder];
     [blit copyFromTexture:texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
                 sourceSize:MTLSizeMake(w, h, 1) toBuffer:buffer destinationOffset:0 destinationBytesPerRow:stride
     destinationBytesPerImage:bytes];
-    end_encoder();
+    [blit endEncoding];
     const uint64_t frame = R.frame;
     const std::string file = path;
     [command_buffer() addCompletedHandler:^(id<MTLCommandBuffer> command) {
@@ -438,9 +438,10 @@ static void screenshot_screen(Screen& scr, const std::string& path, bool tv) {
     draw_image(e, t.pixelFormat, w, h, scr.tex, scr.srgb, Box{0, 0, (float)w, (float)h}, 1.0f, scr.dyn);
     [e endEncoding];
     id<MTLBuffer> buf = [R.device newBufferWithLength:w * h * 4 options:MTLResourceStorageModeShared];
-    id<MTLBlitCommandEncoder> b = blit_encoder();
+    id<MTLBlitCommandEncoder> b = [command_buffer() blitCommandEncoder];
     [b copyFromTexture:t sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(w, h, 1)
               toBuffer:buf destinationOffset:0 destinationBytesPerRow:w * 4 destinationBytesPerImage:w * h * 4];
+    [b endEncoding];
     const uint64_t frame = R.frame;
     const std::string file = path;
     [command_buffer() addCompletedHandler:^(id<MTLCommandBuffer> cb) {
