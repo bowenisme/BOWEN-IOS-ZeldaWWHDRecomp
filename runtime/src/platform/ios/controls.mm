@@ -516,7 +516,7 @@ static WWQuickControls* controls;
 // Left out: what the other tabs of this panel already set (resolution, frame rate, touch buttons,
 // fast-forward) and what a phone has no use for (mouse sensitivity).
 static bool game_option_hidden(const std::string& id) {
-    static const char* const kHidden[] = {"graphics.resolution","graphics.frame-rate","graphics.dynamic-resolution",
+    static const char* const kHidden[] = {"graphics.resolution","graphics.frame-rate",
         "screen.touch-buttons","screen.touch-controls","mouse-camera.sensitivity","fast-forward",
         "game.progress","game.achievements"};  // (these two open pages of the in-game pause menu)
     for(const char* h:kHidden)if(id==h)return true;
