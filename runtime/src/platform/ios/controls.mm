@@ -18,6 +18,7 @@
 #include "mods/fast_forward.h"
 #include "mods/manager.h"
 #include "overlay/hostui.h"
+#include "overlay/overlay.h"
 #include <atomic>
 #include <algorithm>
 #include <cmath>
@@ -176,6 +177,7 @@ enum { kSettingsScreen, kSettingsControls, kSettingsAssist, kSettingsSaves, kSet
 @property(nonatomic,strong) UISegmentedControl* screenFill;
 @property(nonatomic,strong) UILabel* resolutionNote;
 @property(nonatomic,strong) UIButton* save;
+@property(nonatomic,strong) UIButton* allSettings;
 @property(nonatomic,strong) UIButton* load;
 @property(nonatomic) BOOL saving;
 @property(nonatomic) BOOL loading;
@@ -324,6 +326,10 @@ static WWQuickControls* controls;
     UIButton* editTouch=[self button:@"Customize touch layout and buttons ›" action:@selector(editTouchLayout)];
     editTouch.accessibilityIdentifier=@"edit-touch-layout";
     UIButton* resetTouch=[self button:@"Reset touch controls to default" action:@selector(resetTouchConfiguration)];
+    // the main project's full Settings window (Dear ImGui): every mod and option it has, by touch
+    self.allSettings=[self button:@"All game options (mods, doors, text…) ›" action:@selector(openAllSettings)];
+    self.allSettings.accessibilityIdentifier=@"open-all-settings";
+    [self.allSettings.heightAnchor constraintEqualToConstant:44].active=YES;
     resetTouch.accessibilityIdentifier=@"reset-touch-configuration";
     UILabel* touchNote=label(@"While editing you can drag buttons and change their size and function. Sensitivity changes touch response, not game speed.");
     touchNote.numberOfLines=0; touchNote.font=[UIFont systemFontOfSize:12];
@@ -385,7 +391,7 @@ static WWQuickControls* controls;
     UILabel* playTimeNote=label(@"Counted since this version, including menus and cutscenes; pauses in the background, fast-forward counts real time. Separate from saves, so loading doesn't rewind it. Saved every 30 s and when you leave the app.");
     playTimeNote.font=[UIFont systemFontOfSize:12]; playTimeNote.numberOfLines=0;
     UIStackView* assistStack=[[UIStackView alloc] initWithArrangedSubviews:@[
-        label(@"Play time"),self.playTime,playTimeNote,[self row:@"Fast-forward" control:self.fastEnabled],
+        self.allSettings,label(@"Play time"),self.playTime,playTimeNote,[self row:@"Fast-forward" control:self.fastEnabled],
         [self row:@"Fast-forward now" control:self.fast],self.fastScope,self.rate]];
     UIStackView* saveStack=[[UIStackView alloc] initWithArrangedSubviews:@[
         [self row:@"Save states" control:self.states],stateNote,self.slots,self.slotStatus,self.thumbnail,self.thumbnailStatus,actions,self.status]];
@@ -822,6 +828,10 @@ static WWQuickControls* controls;
 - (void)touchSensitivityChanged {
     ios::set_touch_sensitivity(std::round(self.touchMove.value*20)/20,std::round(self.touchLook.value*20)/20);
     [self refreshTouchSensitivity];
+}
+- (void)openAllSettings {
+    if(panel_open.load())[self togglePanel];
+    overlay::set_open(true);
 }
 - (void)editTouchLayout {
     if(panel_open.load())[self togglePanel];
