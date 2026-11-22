@@ -833,11 +833,16 @@ int main(int argc, char** argv) {
         player_models::set_choices(c);
     });
 #ifdef WWHD_IOS
-    // iPad uses original 30 Hz logic and at most 60 fps interpolation, including legacy
-    // ios.interpFps=120 and WWHD_INTERP_FPS>60 requests. Fast-forward keeps its own clock rate.
-    interp::set_fps(60);
-    interp::set_mode(getenv("WWHD_INTERP") ? (atoi(getenv("WWHD_INTERP")) ? 1 : 0) : 1);
-    if (!getenv("WWHD_INTERP_PACED")) interp::set_paced_interpolation_at(60, true);
+    // Original 30 Hz game logic with 60 fps interpolation by default; 120 fps (ios.interpFps=120) on
+    // 120 Hz screens. Paced: in-between frames the GPU can't finish in time are dropped, never the
+    // game's own steps. Fast-forward keeps its own clock rate.
+    {
+        std::string saved;
+        const int fps = hostui::get("ios.interpFps", saved) && saved == "120" ? 120 : 60;
+        interp::set_fps(fps);
+        interp::set_mode(getenv("WWHD_INTERP") ? (atoi(getenv("WWHD_INTERP")) ? 1 : 0) : 1);
+        if (!getenv("WWHD_INTERP_PACED")) interp::set_paced_interpolation_at(fps, true);
+    }
     if (!getenv("WWHD_INTERP") && !getenv("WWHD_INTERP_FPS")) {
         std::string saved;
         if (hostui::get("ios.frameMode",saved) && (saved=="0" || saved=="1")) interp::set_mode(saved=="1"?1:0);

@@ -18,7 +18,7 @@
 #include "mods/fast_forward.h"
 #include "mods/manager.h"
 #include "overlay/hostui.h"
-#include "overlay/overlay.h"
+#include "mods/game_settings.h"
 #include <atomic>
 #include <algorithm>
 #include <cmath>
@@ -64,10 +64,12 @@ static bool testing_controls=false;
 static void persist_setting(const char* key,const std::string& value) { if(!testing_controls)hostui::set(key,value); }
 static int backend_slot(NSInteger index) { constexpr int slots[]={1,2,5}; return slots[std::clamp((int)index,0,2)]; }
 static int visible_slot(int slot) { return slot==5?3:slot; }
-static NSInteger frame_segment() { return interp::mode()==0?0:1; }
+static NSInteger frame_segment() { return interp::mode()==0?0:interp::fps()>=120?2:1; }
+static bool screen_120() { return UIScreen.mainScreen.maximumFramesPerSecond>=120; }
 static bool enforce_frame_limit() {
-    if(interp::fps()==60)return false;
-    interp::set_fps(60);
+    // 60, or 120 on a 120 Hz screen (ProMotion)
+    if(interp::fps()==60||(interp::fps()==120&&screen_120()))return false;
+    interp::set_fps(60); interp::set_paced_interpolation_at(60,true);
     return true;
 }
 static int target_fps() {
@@ -95,7 +97,7 @@ static NSString* upscale_status_text() {
 
 static NSString* const show_key=@"wwhd.ios.performance";
 static NSString* const state_key=@"wwhd.ios.quickStates";
-enum { kSettingsScreen, kSettingsControls, kSettingsAssist, kSettingsSaves, kSettingsCategoryCount };
+enum { kSettingsScreen, kSettingsControls, kSettingsAssist, kSettingsSaves, kSettingsGame, kSettingsCategoryCount };
 
 @interface WWFrameTimeGraph : UIView
 @property(nonatomic,copy) NSArray<NSNumber*>* samples;
@@ -177,7 +179,7 @@ enum { kSettingsScreen, kSettingsControls, kSettingsAssist, kSettingsSaves, kSet
 @property(nonatomic,strong) UISegmentedControl* screenFill;
 @property(nonatomic,strong) UILabel* resolutionNote;
 @property(nonatomic,strong) UIButton* save;
-@property(nonatomic,strong) UIButton* allSettings;
+@property(nonatomic,strong) UIStackView* gameStack;
 @property(nonatomic,strong) UIButton* load;
 @property(nonatomic) BOOL saving;
 @property(nonatomic) BOOL loading;
@@ -213,7 +215,8 @@ static WWQuickControls* controls;
     [b setTitleColor:ink() forState:UIControlStateNormal];
     b.backgroundColor=[ink() colorWithAlphaComponent:.08]; b.layer.cornerRadius=10;
     b.titleLabel.font=[UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
-    [b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside]; return b;
+    if(action)[b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    return b;
 }
 - (UIStackView*)row:(NSString*)title control:(UIView*)view {
     UIStackView* row=[[UIStackView alloc] initWithArrangedSubviews:@[label(title),view]];
@@ -326,14 +329,10 @@ static WWQuickControls* controls;
     UIButton* editTouch=[self button:@"Customize touch layout and buttons ›" action:@selector(editTouchLayout)];
     editTouch.accessibilityIdentifier=@"edit-touch-layout";
     UIButton* resetTouch=[self button:@"Reset touch controls to default" action:@selector(resetTouchConfiguration)];
-    // the main project's full Settings window (Dear ImGui): every mod and option it has, by touch
-    self.allSettings=[self button:@"All game options (mods, doors, text…) ›" action:@selector(openAllSettings)];
-    self.allSettings.accessibilityIdentifier=@"open-all-settings";
-    [self.allSettings.heightAnchor constraintEqualToConstant:44].active=YES;
     resetTouch.accessibilityIdentifier=@"reset-touch-configuration";
     UILabel* touchNote=label(@"While editing you can drag buttons and change their size and function. Sensitivity changes touch response, not game speed.");
     touchNote.numberOfLines=0; touchNote.font=[UIFont systemFontOfSize:12];
-    self.frameMode=[self segments:@[@"30 FPS",@"60 FPS"] action:@selector(frameChanged)];
+    self.frameMode=[self segments:screen_120()?@[@"30 FPS",@"60 FPS",@"120 FPS"]:@[@"30 FPS",@"60 FPS"] action:@selector(frameChanged)];
     self.frameMode.apportionsSegmentWidthsByContent=YES;
     self.frameMode.selectedSegmentIndex=frame_segment();
     self.aspectMode=[self segments:@[@"Fit screen",@"Original 16:9"] action:@selector(aspectChanged)];
@@ -391,17 +390,20 @@ static WWQuickControls* controls;
     UILabel* playTimeNote=label(@"Counted since this version, including menus and cutscenes; pauses in the background, fast-forward counts real time. Separate from saves, so loading doesn't rewind it. Saved every 30 s and when you leave the app.");
     playTimeNote.font=[UIFont systemFontOfSize:12]; playTimeNote.numberOfLines=0;
     UIStackView* assistStack=[[UIStackView alloc] initWithArrangedSubviews:@[
-        self.allSettings,label(@"Play time"),self.playTime,playTimeNote,[self row:@"Fast-forward" control:self.fastEnabled],
+        label(@"Play time"),self.playTime,playTimeNote,[self row:@"Fast-forward" control:self.fastEnabled],
         [self row:@"Fast-forward now" control:self.fast],self.fastScope,self.rate]];
     UIStackView* saveStack=[[UIStackView alloc] initWithArrangedSubviews:@[
         [self row:@"Save states" control:self.states],stateNote,self.slots,self.slotStatus,self.thumbnail,self.thumbnailStatus,actions,self.status]];
-    for(UIStackView* stack in @[screenStack,controlsStack,assistStack,saveStack]) {
+    // Game: the main project's settings list (mods/game_settings.h), built from it each time it opens,
+    // so options added upstream appear here without changes to this panel
+    self.gameStack=[UIStackView new];
+    for(UIStackView* stack in @[screenStack,controlsStack,assistStack,saveStack,self.gameStack]) {
         stack.axis=UILayoutConstraintAxisVertical; stack.spacing=10; stack.translatesAutoresizingMaskIntoConstraints=NO;
     }
     self.settingsPages=@[[self scrollWithContent:screenStack],[self scrollWithContent:controlsStack],
-        [self scrollWithContent:assistStack],[self scrollWithContent:saveStack]];
+        [self scrollWithContent:assistStack],[self scrollWithContent:saveStack],[self scrollWithContent:self.gameStack]];
     self.settingsScroll=self.settingsPages[0];
-    self.settingsCategory=[self segments:@[@"Display",@"Controls",@"Extras",@"Save"] action:@selector(settingsCategoryChanged)];
+    self.settingsCategory=[self segments:@[@"Display",@"Controls",@"Extras",@"Save",@"Game"] action:@selector(settingsCategoryChanged)];
     self.settingsCategory.selectedSegmentIndex=0;
     self.settingsCategory.accessibilityLabel=@"Settings category";
     UIStackView* header=[[UIStackView alloc] initWithArrangedSubviews:@[title,close]];
@@ -508,6 +510,118 @@ static WWQuickControls* controls;
     if(selected==kSettingsScreen)[self refreshResolutionNote];
     if(selected==kSettingsAssist)[self refreshPlayTime];
     if(selected==kSettingsSaves)[self refreshSlot];
+    if(selected==kSettingsGame)[self rebuildGameOptions];
+}
+// ---------------------------------------------------------------- Game: the main project's settings list
+// Left out: what the other tabs of this panel already set (resolution, frame rate, touch buttons,
+// fast-forward) and what a phone has no use for (mouse sensitivity).
+static bool game_option_hidden(const std::string& id) {
+    static const char* const kHidden[] = {"graphics.resolution","graphics.frame-rate","graphics.dynamic-resolution",
+        "screen.touch-buttons","screen.touch-controls","mouse-camera.sensitivity","fast-forward",
+        "game.progress","game.achievements"};  // (these two open pages of the in-game pause menu)
+    for(const char* h:kHidden)if(id==h)return true;
+    return false;
+}
+static std::vector<std::string> g_game_ids;  // control tag -> item id (items are looked up again on change)
+static NSString* ns(const std::string& s) { return [NSString stringWithUTF8String:s.c_str()] ?: @""; }
+- (void)gameOptionChanged:(UIControl*)control {
+    if(control.tag<0||control.tag>=(NSInteger)g_game_ids.size())return;
+    const game_settings::Item* item=game_settings::find(g_game_ids[(size_t)control.tag]);
+    if(!item||!item->set)return;
+    float value=0;
+    if([control isKindOfClass:UISwitch.class])value=((UISwitch*)control).on?1:0;
+    else if([control isKindOfClass:UISegmentedControl.class])value=(float)((UISegmentedControl*)control).selectedSegmentIndex;
+    else if([control isKindOfClass:UISlider.class]) {
+        value=((UISlider*)control).value;
+        if(item->step>0)value=item->min+std::round((value-item->min)/item->step)*item->step;
+    }
+    item->set(value);
+    // other options can depend on this one (shown dimmed): redraw once the change is applied
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/8),dispatch_get_main_queue(),^{ [self rebuildGameOptions]; });
+}
+- (void)gameSliderMoved:(UISlider*)slider {
+    if(slider.tag<0||slider.tag>=(NSInteger)g_game_ids.size())return;
+    const game_settings::Item* item=game_settings::find(g_game_ids[(size_t)slider.tag]);
+    UILabel* value=(UILabel*)[slider.superview viewWithTag:-1];
+    if(item&&value)value.text=item->format?ns(item->format(slider.value)):[NSString stringWithFormat:@"%.2f",slider.value];
+}
+- (void)rebuildGameOptions {
+    if(!self.gameStack)return;
+    game_settings::register_builtin();
+    for(UIView* v in self.gameStack.arrangedSubviews){[self.gameStack removeArrangedSubview:v];[v removeFromSuperview];}
+    g_game_ids.clear();
+    for(const std::string& tab:game_settings::tabs()) {
+        std::vector<const game_settings::Item*> shown;
+        for(const game_settings::Item* it:game_settings::items(tab))if(!game_option_hidden(it->id))shown.push_back(it);
+        if(shown.empty())continue;
+        UILabel* header=label(ns(game_settings::tab_label(tab)));
+        header.font=[UIFont systemFontOfSize:18 weight:UIFontWeightBold];
+        [self.gameStack addArrangedSubview:header];
+        for(const game_settings::Item* it:shown) {
+            const NSInteger tag=(NSInteger)g_game_ids.size(); g_game_ids.push_back(it->id);
+            const float v=it->get?it->get():0;
+            const bool enabled=!it->enabled||it->enabled();
+            UIView* control=nil;
+            using K=game_settings::Kind;
+            if(it->kind==K::Toggle) {
+                UISwitch* sw=[self toggle:v>.5f action:@selector(gameOptionChanged:)]; sw.tag=tag; sw.enabled=enabled;
+                control=[self row:ns(it->label) control:sw];
+            } else if(it->kind==K::Choice) {
+                NSMutableArray* names=[NSMutableArray array];
+                for(const std::string& c:it->choices)[names addObject:ns(c)];
+                [self.gameStack addArrangedSubview:label(ns(it->label))];
+                if(names.count&&names.count<=4) {
+                    UISegmentedControl* seg=[self segments:names action:@selector(gameOptionChanged:)];
+                    seg.apportionsSegmentWidthsByContent=YES;
+                    seg.selectedSegmentIndex=std::clamp((int)std::lround(v),0,(int)names.count-1); seg.tag=tag; seg.enabled=enabled;
+                    control=seg;
+                } else {
+                    UIButton* b=[self button:ns(game_settings::value_text(*it)) action:nil];
+                    NSMutableArray* actions=[NSMutableArray array];
+                    for(NSUInteger i=0;i<names.count;++i) {
+                        const std::string id=it->id; const float choice=(float)i;
+                        UIAction* a=[UIAction actionWithTitle:names[i] image:nil identifier:nil handler:^(UIAction*) {
+                            if(const game_settings::Item* item=game_settings::find(id))if(item->set)item->set(choice);
+                            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/8),dispatch_get_main_queue(),^{ [self rebuildGameOptions]; });
+                        }];
+                        if((long)i==std::lround(v))a.state=UIMenuElementStateOn;
+                        [actions addObject:a];
+                    }
+                    b.menu=[UIMenu menuWithChildren:actions]; b.showsMenuAsPrimaryAction=YES; b.enabled=enabled;
+                    [b.heightAnchor constraintEqualToConstant:40].active=YES;
+                    control=b;
+                }
+            } else if(it->kind==K::Number) {
+                UISlider* slider=[UISlider new]; slider.minimumValue=it->min; slider.maximumValue=it->max; slider.value=v;
+                slider.minimumTrackTintColor=ink(); slider.tag=tag; slider.enabled=enabled;
+                [slider addTarget:self action:@selector(gameSliderMoved:) forControlEvents:UIControlEventValueChanged];
+                [slider addTarget:self action:@selector(gameOptionChanged:) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside];
+                UILabel* value=label(ns(game_settings::value_text(*it))); value.tag=-1;
+                [value setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+                [self.gameStack addArrangedSubview:label(ns(it->label))];
+                UIStackView* row=[[UIStackView alloc] initWithArrangedSubviews:@[slider,value]];
+                row.axis=UILayoutConstraintAxisHorizontal; row.spacing=12; row.alignment=UIStackViewAlignmentCenter;
+                control=row;
+            } else {  // Action
+                std::string title=it->label; if(it->text){const std::string t=it->text(); if(!t.empty())title+=" · "+t;}
+                UIButton* b=[self button:ns(title) action:nil];
+                const std::string id=it->id;
+                [b addAction:[UIAction actionWithHandler:^(UIAction*) {
+                    if(const game_settings::Item* item=game_settings::find(id))if(item->set)item->set(0);
+                }] forControlEvents:UIControlEventTouchUpInside];
+                b.enabled=enabled; [b.heightAnchor constraintEqualToConstant:40].active=YES;
+                control=b;
+            }
+            if(control)[self.gameStack addArrangedSubview:control];
+            std::string help=it->help; if(it->next_start)help+=(help.empty()?"":" ")+std::string("Applies at the next start.");
+            if(!help.empty()) {
+                UILabel* note=label(ns(help)); note.numberOfLines=0; note.font=[UIFont systemFontOfSize:12];
+                note.alpha=enabled?1:.5; [self.gameStack addArrangedSubview:note];
+            }
+        }
+    }
+    if(!self.gameStack.arrangedSubviews.count)
+        [self.gameStack addArrangedSubview:label(@"These options appear once the game is running.")];
 }
 - (void)refreshPlayTime {
     if(!panel_open.load()||self.settingsPage.hidden||self.settingsCategory.selectedSegmentIndex!=kSettingsAssist)return;
@@ -750,11 +864,12 @@ static WWQuickControls* controls;
     motion::recalibrate(); self.status.text=@"Keep the controller still for a moment while the gyro recalibrates.";
 }
 - (void)frameChanged {
-    const int selected=std::clamp((int)self.frameMode.selectedSegmentIndex,0,1);
+    const int selected=std::clamp((int)self.frameMode.selectedSegmentIndex,0,screen_120()?2:1);
     self.frameMode.selectedSegmentIndex=selected;
-    self.status.text=selected?@"Frame rate: 60 FPS":@"Frame rate: 30 FPS";
-    interp::set_fps(60); interp::set_mode(selected?1:0);
-    persist_setting("ios.interpFps","60");
+    const int fps=selected==2?120:60;
+    self.status.text=selected==0?@"Frame rate: 30 FPS":selected==1?@"Frame rate: 60 FPS":@"Frame rate: 120 FPS (uses more battery)";
+    interp::set_fps(fps); interp::set_paced_interpolation_at(fps,true); interp::set_mode(selected?1:0);
+    persist_setting("ios.interpFps",fps==120?"120":"60");
     persist_setting("ios.frameMode",selected?"1":"0");
     [self refresh]; [self refreshDetails];
 }
@@ -828,10 +943,6 @@ static WWQuickControls* controls;
 - (void)touchSensitivityChanged {
     ios::set_touch_sensitivity(std::round(self.touchMove.value*20)/20,std::round(self.touchLook.value*20)/20);
     [self refreshTouchSensitivity];
-}
-- (void)openAllSettings {
-    if(panel_open.load())[self togglePanel];
-    overlay::set_open(true);
 }
 - (void)editTouchLayout {
     if(panel_open.load())[self togglePanel];
