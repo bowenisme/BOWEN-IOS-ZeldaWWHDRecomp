@@ -549,7 +549,7 @@ static WWQuickControls* controls;
         return;
     }
     const int selected=backend_slot(self.slots.selectedSegmentIndex);
-    auto slot=ss::full_slot_info(selected);
+    auto slot=ss::instant_slot_info(selected);
     if(!slot.used)slot=ss::slot_info(selected); // explain portable-only records without loading them
     [self renderSlot:slot];
 }
@@ -844,7 +844,7 @@ static WWQuickControls* controls;
 - (void)saveState {
     if(!self.save.enabled||self.saving||self.loading)return;
     const int selected=backend_slot(self.slots.selectedSegmentIndex);
-    if(ss::slot_info(selected).used||ss::full_slot_info(selected).used) {
+    if(ss::slot_info(selected).used||ss::instant_slot_info(selected).used) {
         UIAlertController* alert=[UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Overwrite slot %d?",visible_slot(selected)]
             message:@"A new save state will replace the one in this slot. Other slots are kept." preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
@@ -1203,7 +1203,7 @@ void test_controls() {
     controls.states.on=YES; [controls.states sendActionsForControlEvents:UIControlEventValueChanged]; check(controls.save.enabled,@"State save button enables");
     for(int i=0;i<3;++i) {
         controls.slots.selectedSegmentIndex=i; [controls.slots sendActionsForControlEvents:UIControlEventValueChanged];
-        const int backend=backend_slot(i); const auto full=ss::full_slot_info(backend);
+        const int backend=backend_slot(i); const auto full=ss::instant_slot_info(backend);
         check(backend==(i==2?5:i+1),@"Three visible slots map to 1/2/5 without moving old files");
         check(controls.load.enabled==(full.used&&full.compatible),@"Each selected slot loads only its compatible full snapshot");
     }
@@ -1338,7 +1338,7 @@ void test_controls() {
                             [NSTimer scheduledTimerWithTimeInterval:10 repeats:NO block:^(NSTimer*) {
                                 controls.states.on=YES; [controls.states sendActionsForControlEvents:UIControlEventValueChanged];
                                 int unused=-1;
-                                for(int i=0;i<3;++i)if(!ss::slot_info(backend_slot(i)).used&&!ss::full_slot_info(backend_slot(i)).used) { unused=i; break; }
+                                for(int i=0;i<3;++i)if(!ss::slot_info(backend_slot(i)).used&&!ss::instant_slot_info(backend_slot(i)).used) { unused=i; break; }
                                 if(unused<0) { controls.status.text=@"Auto save/load test skipped: all three slots are in use and won't be overwritten."; return; }
                                 controls.slots.selectedSegmentIndex=unused; [controls refresh];
                                 [controls.save sendActionsForControlEvents:UIControlEventTouchUpInside];

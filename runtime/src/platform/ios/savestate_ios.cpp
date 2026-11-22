@@ -20,7 +20,7 @@ void link_thumbnail(SlotInfo& info) {
 }
 }  // namespace
 
-SlotInfo full_slot_info(int slot) {
+SlotInfo instant_slot_info(int slot) {
     SlotInfo info = slot_info(slot);
     if (info.used && info.portable) return SlotInfo{};  // the panel only loads full states
     link_thumbnail(info);

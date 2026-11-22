@@ -102,7 +102,7 @@ void request_load_portable_file(const std::string& path, std::function<void(bool
 void request_load_portable_file(const std::string& path);  // a .wwstate anywhere (WWHD_PORTABLE_LOAD)
 // iOS settings panel (platform/ios/savestate_ios.cpp): instant-state slots on top of the API above.
 // Full states only; `done` may run on any thread (the UI dispatches to main).
-SlotInfo full_slot_info(int slot);
+SlotInfo instant_slot_info(int slot);
 void request_save_full(int slot, std::function<void(bool ok, const std::string& why)> done);
 void request_load_full(int slot, std::function<void(bool ok, const std::string& why)> done);
 bool instant_states_enabled();            // the panel's master switch (kept in the states folder)
