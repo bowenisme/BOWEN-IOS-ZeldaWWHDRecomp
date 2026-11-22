@@ -1,0 +1,111 @@
+# iOS sync: every night, merge the main project (ZeldaWWHDRecomp/ZeldaWWHDRecomp, branch main) into
+# this fork's `ios` branch, check that the iPhone runtime still compiles and links (ios/build.py --stub:
+# no game files, no signing), and push it. Players then update with `git pull` + tools/ios/build-iphone.sh.
+#
+# Nothing changes when the main project has nothing new. When the merge conflicts or the iPhone build
+# breaks, `ios` is left as it was, the attempt is pushed to the branch `ios-sync-needs-fix`, and an issue
+# says what failed (one open issue at a time).
+#
+# The main project's own workflows (Android, Linux, Windows builds, releases) are switched off in this
+# fork by the first step: they are for the main repository, and the release one would try to publish.
+name: iOS sync with the main project
+
+on:
+  schedule:
+    - cron: "17 11 * * *"   # every day, 3:17 am Pacific
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: ios-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UPSTREAM: https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp.git
+    steps:
+      - name: Keep only this fork's workflow on
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows" --paginate \
+            --jq '.workflows[] | select(.path != ".github/workflows/ios-sync.yml" and .state == "active") | .id' |
+          while read -r id; do gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$id/disable" || true; done
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ios
+          fetch-depth: 0
+          submodules: false
+
+      - name: Merge the main project
+        id: merge
+        run: |
+          git config user.name "bowenisme"
+          git config user.email "bowenisme@users.noreply.github.com"
+          git remote add upstream "$UPSTREAM"
+          git fetch --no-tags upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Already up to date with the main project."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "upstream=$(git rev-parse --short upstream/main)" >> "$GITHUB_OUTPUT"
+          if git merge --no-edit -m "Sync with the main project ($(git rev-parse --short upstream/main))" upstream/main; then
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only --diff-filter=U > conflicts.txt
+            git merge --abort
+            echo "merged=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check the iPhone build (no game files, unsigned)
+        id: build
+        if: steps.merge.outputs.merged == 'true'
+        run: |
+          command -v cmake >/dev/null || pip3 install --break-system-packages cmake
+          xcodebuild -version
+          set -o pipefail
+          python3 ios/build.py --stub 2>&1 | tee build.log
+
+      - name: Publish to the ios branch
+        if: steps.merge.outputs.merged == 'true' && steps.build.outcome == 'success'
+        run: |
+          git push origin HEAD:ios
+          # a sync that works closes the open "needs a fix" issue
+          for n in $(gh issue list -R "$GITHUB_REPOSITORY" --state open --label ios-sync --json number --jq '.[].number'); do
+            gh issue close "$n" -R "$GITHUB_REPOSITORY" -c "Fixed: the main project ($(git rev-parse --short upstream/main)) now merges and builds for iPhone."
+          done
+
+      - name: Report a sync that needs a fix
+        if: always() && steps.merge.outputs.changed == 'true' && (steps.merge.outputs.merged == 'false' || steps.build.outcome == 'failure')
+        run: |
+          {
+            echo "The nightly sync with the main project (\`${{ steps.merge.outputs.upstream }}\`) needs a fix. The \`ios\` branch was left as it was."
+            echo
+            if [ "${{ steps.merge.outputs.merged }}" = "false" ]; then
+              echo "**The merge conflicts** in:"
+              echo '```'; cat conflicts.txt; echo '```'
+              echo "Fix: \`git fetch upstream && git merge upstream/main\` on the \`ios\` branch, resolve these files, push."
+            else
+              git push -f origin HEAD:refs/heads/ios-sync-needs-fix
+              echo "**The merge worked but the iPhone build fails.** The merged code is on the branch \`ios-sync-needs-fix\`."
+              echo
+              echo "Errors:"
+              echo '```'; grep -E "error:|Undefined symbols|ld: " build.log | sort -u | head -40; echo '```'
+            fi
+            echo
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > report.md
+          gh label create ios-sync -R "$GITHUB_REPOSITORY" --color D93F0B --description "Nightly sync with the main project" 2>/dev/null || true
+          open=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --label ios-sync --json number --jq '.[0].number')
+          if [ -n "$open" ]; then gh issue comment "$open" -R "$GITHUB_REPOSITORY" -F report.md
+          else gh issue create -R "$GITHUB_REPOSITORY" --label ios-sync --title "Nightly sync with the main project needs a fix" -F report.md; fi
+          exit 1
