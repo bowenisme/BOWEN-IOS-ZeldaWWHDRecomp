@@ -168,7 +168,9 @@ int ask_player_alert(const std::string& title, const std::string& text, const st
     };
     if (NSThread.isMainThread) {
         show();
-        run_until([&] { return answer != -2; }, 24 * 3600);
+        // (a __block variable can't be captured by a C++ lambda: the loop is written out here)
+        while (answer == -2)
+            [NSRunLoop.currentRunLoop runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
     } else {
         dispatch_async(dispatch_get_main_queue(), show);
         dispatch_semaphore_wait(answered, DISPATCH_TIME_FOREVER);
