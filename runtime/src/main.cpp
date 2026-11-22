@@ -399,7 +399,7 @@ static void start_log_file(bool error = false) {
     const char* overlay_trace = getenv("WWHD_OVERLAY_TRACE");
     const bool tracing_overlay = overlay_trace && !strcmp(overlay_trace,"1");
     const bool hasSaved = hostui::get("logFile", saved);
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(WWHD_IOS)  // phones: on by default (no console to read)
     const bool enabledBySetting = !hasSaved || saved != "0";
 #else
     const bool enabledBySetting = hasSaved && saved == "1";
