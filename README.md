@@ -2,8 +2,9 @@
 
 This fork adds **iPhone and iPad** to the native Wind Waker HD port. It follows the latest
 [main project](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp) and keeps the iOS work from the community iOS port:
-Metal rendering, 60 fps, MetalFX upscaling, touch controls, controller support, the GamePad screen, and a full-screen /
-black-bars switch. Use the `ios` branch.
+Metal rendering, 60 and 120 fps, MetalFX upscaling, touch controls, controller support, the GamePad screen, and a
+full-screen / black-bars switch, all in one iPhone-style settings panel that also carries the main project's gameplay and
+mod options. Use the `ios` branch.
 
 > **No downloads of the game or the app are provided here, and none ever will be.** You build the app on your own Mac
 > from **your own** copy of the game. The app contains code recompiled from your copy, so it is for your own devices
@@ -69,6 +70,27 @@ Your extracted game is reused, so `--wua` isn't needed again. Updating keeps you
 phone, as long as you keep the same team (the app ID is based on it). Before a big update, it's a good idea to copy
 the `save` and `state` folders off the phone in Finder's Files tab as a backup.
 
+### Settings
+
+Tap **Settings** (top right) in the game. Everything is in one panel:
+
+| Tab | What's there |
+|---|---|
+| **Display** | Frame rate (30 / 60 / 120 FPS), Full screen or Black bars, aspect ratio, render resolution, MetalFX upscaling and its input resolution, performance overlay |
+| **Controls** | GamePad or Pro Controller mode, GamePad screen, controller gyro, touch buttons (layout editor, sensitivity) |
+| **Extras** | Play time, fast-forward |
+| **Save** | Three save-state slots with thumbnails |
+| **Game** | The main project's own options: camera, controls, screen, graphics (bloom, clouds, dynamic resolution, ...), walk-through doors, instant text, faster climbing and sailing, and more. Built from the main project's settings list, so new options appear here after each update. |
+
+Name entry (new file, changing Link's name) uses the iPhone keyboard.
+
+**About 120 fps:** the game itself always runs at its original 30 steps a second; 60 and 120 fps add in-between
+frames (1 or 3 per step), so timing and physics stay exactly as on the Wii U. 120 FPS is offered on 120 Hz screens
+(iPhone Pro, iPad Pro). It draws twice as many frames as 60, so it uses more battery and heat; when the phone can't
+finish an in-between frame in time it skips it rather than slowing the game. To help it hold 120: MetalFX at a lower
+input resolution (60-70%), or Dynamic resolution (Game > Graphics), but not both. Low Power Mode limits the screen to
+60 Hz. Turn on the performance overlay to see what you're getting.
+
 ### Paid or free Apple ID
 
 | | Paid Apple Developer account | Free Apple ID |
@@ -93,6 +115,8 @@ only build. Run `tools/ios/build-iphone.sh --help` for the list.
 - **"This iPhone isn't registered to your developer team":** add its UDID under Devices on the developer site.
 - **Black screen or instant crash:** check the `game` folder is in the app (step 6) and contains `code`, `content`
   and `meta`. Make sure the game is the unmodified v0 release.
+- **Something's wrong in the game:** the game writes a log on every run. Finder > your iPhone > Files > the Wind Waker
+  app > `captures` > `wwhd.log`; attach it to an issue.
 - **Build errors:** please [open an issue](https://github.com/bowenisme/BOWEN-IOS-ZeldaWWHDRecomp/issues) with the
   `error:` lines the script prints (the full log is in `build/ios-work/build.log`).
 
