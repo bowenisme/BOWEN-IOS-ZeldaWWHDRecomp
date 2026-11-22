@@ -1625,8 +1625,23 @@ static bool ensure_pass(Surface* const* colors, const uint32_t* colorSlices, Sur
     end_encoder();
     MTLRenderPassDescriptor* rp = [MTLRenderPassDescriptor renderPassDescriptor];
     bool any = false;
+#ifdef WWHD_IOS
+    // iPhone/iPad (AGX, tile-based): a pass whose attachments differ in size, or name a texture that is
+    // gone (a target resized by dynamic resolution), crashed inside the driver. Leave such an attachment
+    // out and fix the pass size to the smallest one, which Metal allows; the Mac driver tolerates both.
+    NSUInteger passW = NSUIntegerMax, passH = NSUIntegerMax;
+    for (int i = 0; i < 8; i++)
+        if (colors[i] && colors[i]->tex) passW = std::min(passW, colors[i]->tex.width), passH = std::min(passH, colors[i]->tex.height);
+    if (depth && !depth->tex) depth = nullptr;
+    if (depth && passW != NSUIntegerMax && (depth->tex.width < passW || depth->tex.height < passH)) depth = nullptr;
+    if (depth) passW = std::min(passW, depth->tex.width), passH = std::min(passH, depth->tex.height);
+    if (passW != NSUIntegerMax) { rp.renderTargetWidth = passW; rp.renderTargetHeight = passH; }
+#endif
     for (int i = 0; i < 8; i++) {
         if (!colors[i]) continue;
+#ifdef WWHD_IOS
+        if (!colors[i]->tex) continue;
+#endif
         rp.colorAttachments[i].texture = colors[i]->tex;
         // a volume's slice is a depth plane
         if (colors[i]->tex.textureType == MTLTextureType3D) rp.colorAttachments[i].depthPlane = colorSlices[i];

@@ -20,6 +20,7 @@
 #include "overlay/hostui.h"
 #include "mods/game_settings.h"
 #include "mods/save_folder.h"
+#include "crashrec.h"
 #include "overlay/overlay.h"
 #include <atomic>
 #include <algorithm>
@@ -183,6 +184,8 @@ enum { kSettingsScreen, kSettingsControls, kSettingsAssist, kSettingsSaves, kSet
 @property(nonatomic,strong) UIButton* save;
 @property(nonatomic,strong) UIStackView* gameStack;
 @property(nonatomic,strong) UILabel* saveFolderStatus;
+@property(nonatomic,strong) UISwitch* crashRecovery;
+@property(nonatomic,strong) UIStackView* autoStates;
 @property(nonatomic,strong) UIButton* load;
 @property(nonatomic) BOOL saving;
 @property(nonatomic) BOOL loading;
@@ -397,6 +400,18 @@ static WWQuickControls* controls;
         [self row:@"Fast-forward now" control:self.fast],self.fastScope,self.rate]];
     // Cross-save: the main project's save folder (mods/save_folder.h), a folder in Files / iCloud Drive
     // shared with the Mac version (platform/ios/save_folder_ios.mm)
+    // Crash Recovery (crashrec.h): the main project's automatic save states. On by default on iPhone
+    // (once: the player's own choice is kept after that)
+    if(![NSUserDefaults.standardUserDefaults boolForKey:@"ios.crashRecoveryDefaulted"]) {
+        crashrec::set_enabled(true);
+        [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"ios.crashRecoveryDefaulted"];
+    }
+    UILabel* recoveryTitle=label(@"Crash recovery");
+    recoveryTitle.font=[UIFont systemFontOfSize:18 weight:UIFontWeightBold];
+    self.crashRecovery=[self toggle:crashrec::enabled() action:@selector(crashRecoveryChanged)];
+    UILabel* recoveryNote=label(@"Saves an automatic state every few minutes in the background, so a crash costs minutes, not your progress since the last save. Saving pauses the game for a moment.");
+    recoveryNote.numberOfLines=0; recoveryNote.font=[UIFont systemFontOfSize:12];
+    self.autoStates=[UIStackView new]; self.autoStates.axis=UILayoutConstraintAxisVertical; self.autoStates.spacing=8;
     UILabel* crossTitle=label(@"Cross-save");
     crossTitle.font=[UIFont systemFontOfSize:18 weight:UIFontWeightBold];
     self.saveFolderStatus=label(@""); self.saveFolderStatus.numberOfLines=0; self.saveFolderStatus.font=[UIFont systemFontOfSize:12];
@@ -408,6 +423,7 @@ static WWQuickControls* controls;
     crossNote.numberOfLines=0; crossNote.font=[UIFont systemFontOfSize:12];
     UIStackView* saveStack=[[UIStackView alloc] initWithArrangedSubviews:@[
         [self row:@"Save states" control:self.states],stateNote,self.slots,self.slotStatus,self.thumbnail,self.thumbnailStatus,actions,self.status,
+        recoveryTitle,[self row:@"Automatic states" control:self.crashRecovery],recoveryNote,self.autoStates,
         crossTitle,self.saveFolderStatus,chooseFolder,defaultFolder,crossNote]];
     // Game: the main project's settings list (mods/game_settings.h), built from it each time it opens,
     // so options added upstream appear here without changes to this panel
@@ -524,7 +540,7 @@ static WWQuickControls* controls;
     if(!panel_open.load()||self.settingsPage.hidden)return;
     if(selected==kSettingsScreen)[self refreshResolutionNote];
     if(selected==kSettingsAssist)[self refreshPlayTime];
-    if(selected==kSettingsSaves){[self refreshSlot];[self refreshSaveFolder];}
+    if(selected==kSettingsSaves){[self refreshSlot];[self refreshSaveFolder];[self refreshAutoStates];}
     if(selected==kSettingsGame)[self rebuildGameOptions];
 }
 // ---------------------------------------------------------------- Game: the main project's settings list
@@ -685,6 +701,36 @@ static NSString* ns(const std::string& s) { return [NSString stringWithUTF8Strin
 - (void)openMainSettings {
     if(panel_open.load())[self togglePanel];
     overlay::set_open(true);
+}
+- (void)crashRecoveryChanged {
+    crashrec::set_enabled(self.crashRecovery.on);
+    [self refreshAutoStates];
+}
+- (void)refreshAutoStates {
+    self.crashRecovery.on=crashrec::enabled();
+    for(UIView* v in self.autoStates.arrangedSubviews){[self.autoStates removeArrangedSubview:v];[v removeFromSuperview];}
+    for(int i=1;i<=crashrec::kAutoSlots;++i) {
+        const crashrec::AutoInfo a=crashrec::auto_info(i);
+        if(!a.used)continue;
+        NSString* title=[NSString stringWithFormat:@"Load automatic state %d · %@%@%@",i,text(a.when),a.area.empty()?@"":@" · ",text(a.area)];
+        UIButton* b=[self button:title action:nil];
+        b.titleLabel.adjustsFontSizeToFitWidth=YES;
+        const int slot=i;
+        [b addAction:[UIAction actionWithHandler:^(UIAction*) {
+            UIAlertController* ask=[UIAlertController alertControllerWithTitle:@"Load this automatic state?"
+                message:@"Progress since then is lost unless you saved in the game." preferredStyle:UIAlertControllerStyleAlert];
+            [ask addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+            [ask addAction:[UIAlertAction actionWithTitle:@"Load" style:UIAlertActionStyleDefault handler:^(UIAlertAction*) {
+                crashrec::request_load(slot);
+                if(panel_open.load())[self togglePanel];
+            }]];
+            [self.controller presentViewController:ask animated:YES completion:nil];
+        }] forControlEvents:UIControlEventTouchUpInside];
+        [b.heightAnchor constraintEqualToConstant:40].active=YES;
+        [self.autoStates addArrangedSubview:b];
+    }
+    if(!self.autoStates.arrangedSubviews.count)
+        [self.autoStates addArrangedSubview:label(crashrec::enabled()?@"No automatic state yet.":@"Off.")];
 }
 - (void)refreshSaveFolder {
     const save_folder::View v=save_folder::view();
