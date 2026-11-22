@@ -20,6 +20,9 @@
 #include <cstring>
 #include <atomic>
 #include <mutex>
+#ifdef WWHD_IOS
+#include "platform/ios/ios.h"  // run_gpu: no GPU work while the app is in the background
+#endif
 #include <thread>
 #include <unordered_map>
 #include <string>
@@ -426,7 +429,11 @@ static void render_thread_main() {
                     lk.unlock();
                     {
                         std::lock_guard<std::recursive_mutex> ex(g_exec_mutex);
+#ifdef WWHD_IOS
+                        ios::run_gpu([] { render::service_present(); });
+#else
                         render::with_autorelease_pool([] { render::service_present(); });
+#endif
                     }
                     lk.lock();
                 }
@@ -435,7 +442,11 @@ static void render_thread_main() {
                     lk.unlock();
                     {
                         std::lock_guard<std::recursive_mutex> ex(g_exec_mutex);
+#ifdef WWHD_IOS
+                        ios::run_gpu([] { render::peek_retire(); });
+#else
                         render::with_autorelease_pool([] { render::peek_retire(); });
+#endif
                     }
                     lk.lock();
                     if (gfx::depth_peek::wanted()) g_q_cv.wait_for(lk, std::chrono::microseconds(200));
@@ -449,7 +460,13 @@ static void render_thread_main() {
         }
         {
             std::lock_guard<std::recursive_mutex> lk(g_exec_mutex);
+#ifdef WWHD_IOS
+            // the GPU work runs under the iOS host's lock: going to the background (host.mm set_active)
+            // waits for it and then finishes the GPU's work itself; while in the background it waits here
+            ios::run_gpu([] { execute(g_q_work.data(), (uint32)g_q_work.size()); });
+#else
             render::with_autorelease_pool([] { execute(g_q_work.data(), (uint32)g_q_work.size()); });
+#endif
         }
         g_q_work.clear();
     }
