@@ -283,7 +283,8 @@ if(WWHD_HAS_METAL)
     list(FILTER MOD_GFX_SOURCES EXCLUDE REGEX "/mouse\\.mm$")
     list(APPEND METAL_SOURCES ${CMAKE_SOURCE_DIR}/runtime/src/platform/ios/host.mm
                               ${CMAKE_SOURCE_DIR}/runtime/src/platform/ios/controls.mm
-                              ${CMAKE_SOURCE_DIR}/runtime/src/platform/ios/touch_controls.mm)
+                              ${CMAKE_SOURCE_DIR}/runtime/src/platform/ios/touch_controls.mm
+                              ${CMAKE_SOURCE_DIR}/runtime/src/platform/ios/save_folder_ios.mm)
     list(APPEND GFX_SOURCES ${CMAKE_SOURCE_DIR}/runtime/src/platform/ios/savestate_ios.cpp)
   endif()
   list(APPEND GFX_SOURCES ${METAL_SOURCES} runtime/src/platform/mic_apple.mm)  # (the microphone for code mods, mic.h)

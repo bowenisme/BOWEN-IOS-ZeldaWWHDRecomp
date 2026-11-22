@@ -502,8 +502,7 @@ void set_drc_mode(int m) { if (drc_mode_offered(m)) gfx::display_set_mode(m); }
 int pip_anchor() { return gfx::g_pip_anchor; }
 void set_pip_anchor(int c) { gfx::g_pip_anchor = std::clamp(c,0,int(gfx::kPipCustom)); }
 void save_pip_position() {}
-// main-project host hooks with no iPhone equivalent yet (a save-folder picker comes with cross-save)
-void choose_save_folder(std::function<void(std::string)> chosen) { chosen({}); }
+// main-project host hooks with no iPhone equivalent (choose_save_folder: platform/ios/save_folder_ios.mm)
 void choose_file(const char*, const char*, bool, std::function<void(std::string)> chosen) { chosen({}); }
 bool displays_swapped() { return false; }
 void set_displays_swapped(bool) {}
@@ -802,9 +801,19 @@ int wwhd_runtime_main(int, char**);
     [AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryPlayback error:&audioError];
     [AVAudioSession.sharedInstance setActive:YES error:&audioError];
     application.idleTimerDisabled = YES;
+    // The main project's Settings window ("Mods, audio & more" in the iPhone panel): only the tabs the
+    // panel doesn't cover. Graphics, Display and Saves (resolution, frame rate, screens, save states,
+    // save folder) are the panel's; everything else comes as the main project draws it.
     overlay::ext::Features features;
     features.full_states = true;
+    features.file_picker = false;    // no desktop file chooser (mods come from the online list)
+    features.keyboard = false;       // keyboard and mouse hints
+    features.speaker_choice = false; // iOS picks the output
+    features.code_mods = false;      // the iPhone build is translated without mod hooks
     overlay::ext::set_features(features);
+    overlay::ext::hide_tab("graphics");
+    overlay::ext::hide_tab("display");
+    overlay::ext::hide_tab("saves");
     dispatch_async(dispatch_get_main_queue(), ^{
         bool smoke = [NSProcessInfo.processInfo.arguments containsObject:@"--ios-smoke"];
         bool haveGame = [NSFileManager.defaultManager fileExistsAtPath:@"game/code/cking.rpx"];
@@ -817,9 +826,11 @@ int wwhd_runtime_main(int, char**);
             [vc.view addSubview:g_status];
             runtime_smoke(docs);
         } else {
-            char name[]="wwhd", gameOpt[]="--game", gamePath[]="game", saveOpt[]="--save", savePath[]="save";
-            char* args[]={name,gameOpt,gamePath,saveOpt,savePath,nullptr};
-            wwhd_runtime_main(5,args);
+            // no --save: the save stays in Documents/save unless the player chose a save folder
+            // (Settings > Save > Cross-save; mods/save_folder.h), which --save would switch off
+            char name[]="wwhd", gameOpt[]="--game", gamePath[]="game";
+            char* args[]={name,gameOpt,gamePath,nullptr};
+            wwhd_runtime_main(3,args);
             g_initialized = true;
             g_game_running = true;
             g_play_time_saved_at = CACurrentMediaTime();

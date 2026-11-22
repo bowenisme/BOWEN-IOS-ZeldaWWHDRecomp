@@ -2,6 +2,7 @@
 #include <functional>
 #include <string>
 namespace ios {
+void forget_save_folder();  // cross-save: back to the app's own save folder (save_folder_ios.mm)
 void prompt_text(const std::u16string&, int, std::function<void(bool, std::u16string)>);
 void run_gpu(void (*fn)());
 bool controls_block_input();

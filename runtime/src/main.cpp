@@ -481,6 +481,7 @@ static void enter_data_folder(int argc, char** argv) {
 extern "C" void synthetic_game_frame(Cpu*, PpcFunc);
 
 #ifdef WWHD_IOS
+void ios_prepare_save_folder(const std::string& config_dir);  // platform/ios/save_folder_ios.mm
 int wwhd_runtime_main(int argc, char** argv) {
 #else
 int main(int argc, char** argv) {
@@ -804,6 +805,11 @@ int main(int argc, char** argv) {
     // A save folder chosen in Settings > Saves (save_folder.h), for example inside a cloud folder:
     // a change made there is applied now, and the folder is checked before the game reads its save.
     if (!save_arg && !warm_shaders) {
+#ifdef WWHD_IOS
+        // iPhone/iPad: reopen the chosen folder (Files / iCloud Drive) and have iCloud download the save
+        // before it is read (platform/ios/save_folder_ios.mm)
+        ios_prepare_save_folder(save_paths.preferences.string());
+#endif
         const auto chosen = save_folder::startup(config::save_dir, save_paths.preferences, ask_player,
                                                  [](const std::string& line) { LOG("%s", line.c_str()); }, save_policy, seed_namespace);
         if (chosen.quit) {

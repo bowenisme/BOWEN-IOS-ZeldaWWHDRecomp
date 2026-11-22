@@ -19,6 +19,8 @@
 #include "mods/manager.h"
 #include "overlay/hostui.h"
 #include "mods/game_settings.h"
+#include "mods/save_folder.h"
+#include "overlay/overlay.h"
 #include <atomic>
 #include <algorithm>
 #include <cmath>
@@ -180,6 +182,7 @@ enum { kSettingsScreen, kSettingsControls, kSettingsAssist, kSettingsSaves, kSet
 @property(nonatomic,strong) UILabel* resolutionNote;
 @property(nonatomic,strong) UIButton* save;
 @property(nonatomic,strong) UIStackView* gameStack;
+@property(nonatomic,strong) UILabel* saveFolderStatus;
 @property(nonatomic,strong) UIButton* load;
 @property(nonatomic) BOOL saving;
 @property(nonatomic) BOOL loading;
@@ -392,8 +395,20 @@ static WWQuickControls* controls;
     UIStackView* assistStack=[[UIStackView alloc] initWithArrangedSubviews:@[
         label(@"Play time"),self.playTime,playTimeNote,[self row:@"Fast-forward" control:self.fastEnabled],
         [self row:@"Fast-forward now" control:self.fast],self.fastScope,self.rate]];
+    // Cross-save: the main project's save folder (mods/save_folder.h), a folder in Files / iCloud Drive
+    // shared with the Mac version (platform/ios/save_folder_ios.mm)
+    UILabel* crossTitle=label(@"Cross-save");
+    crossTitle.font=[UIFont systemFontOfSize:18 weight:UIFontWeightBold];
+    self.saveFolderStatus=label(@""); self.saveFolderStatus.numberOfLines=0; self.saveFolderStatus.font=[UIFont systemFontOfSize:12];
+    UIButton* chooseFolder=[self button:@"Choose save folder (iCloud Drive…) ›" action:@selector(chooseSaveFolder)];
+    [chooseFolder.heightAnchor constraintEqualToConstant:40].active=YES;
+    UIButton* defaultFolder=[self button:@"Keep saves on this iPhone only" action:@selector(defaultSaveFolder)];
+    [defaultFolder.heightAnchor constraintEqualToConstant:40].active=YES;
+    UILabel* crossNote=label(@"Pick the same iCloud Drive folder here and in the Mac version (Settings > Saves > Save folder) to play one save on both. Applies the next time you open the game: close it from the app switcher. Your current save is copied there; if the folder already has one, you're asked which to keep (with a backup). Play on one device at a time.");
+    crossNote.numberOfLines=0; crossNote.font=[UIFont systemFontOfSize:12];
     UIStackView* saveStack=[[UIStackView alloc] initWithArrangedSubviews:@[
-        [self row:@"Save states" control:self.states],stateNote,self.slots,self.slotStatus,self.thumbnail,self.thumbnailStatus,actions,self.status]];
+        [self row:@"Save states" control:self.states],stateNote,self.slots,self.slotStatus,self.thumbnail,self.thumbnailStatus,actions,self.status,
+        crossTitle,self.saveFolderStatus,chooseFolder,defaultFolder,crossNote]];
     // Game: the main project's settings list (mods/game_settings.h), built from it each time it opens,
     // so options added upstream appear here without changes to this panel
     self.gameStack=[UIStackView new];
@@ -509,7 +524,7 @@ static WWQuickControls* controls;
     if(!panel_open.load()||self.settingsPage.hidden)return;
     if(selected==kSettingsScreen)[self refreshResolutionNote];
     if(selected==kSettingsAssist)[self refreshPlayTime];
-    if(selected==kSettingsSaves)[self refreshSlot];
+    if(selected==kSettingsSaves){[self refreshSlot];[self refreshSaveFolder];}
     if(selected==kSettingsGame)[self rebuildGameOptions];
 }
 // ---------------------------------------------------------------- Game: the main project's settings list
@@ -622,6 +637,15 @@ static NSString* ns(const std::string& s) { return [NSString stringWithUTF8Strin
     }
     if(!self.gameStack.arrangedSubviews.count)
         [self.gameStack addArrangedSubview:label(@"These options appear once the game is running.")];
+    // the rest of the main project's Settings window: the mod catalogue, quest mods, save backups,
+    // audio, button mapping, language (host.mm hides the tabs this panel already covers)
+    UILabel* moreTitle=label(@"Mods and more");
+    moreTitle.font=[UIFont systemFontOfSize:18 weight:UIFontWeightBold];
+    UIButton* more=[self button:@"Mods, audio, button mapping & more ›" action:@selector(openMainSettings)];
+    [more.heightAnchor constraintEqualToConstant:44].active=YES;
+    UILabel* moreNote=label(@"Opens the main project's own menu: download and switch mods, save backups, sound, controller button mapping, language. Close it with ✕ or B.");
+    moreNote.numberOfLines=0; moreNote.font=[UIFont systemFontOfSize:12];
+    for(UIView* v in @[moreTitle,more,moreNote])[self.gameStack addArrangedSubview:v];
 }
 - (void)refreshPlayTime {
     if(!panel_open.load()||self.settingsPage.hidden||self.settingsCategory.selectedSegmentIndex!=kSettingsAssist)return;
@@ -658,6 +682,30 @@ static NSString* ns(const std::string& s) { return [NSString stringWithUTF8Strin
     [self refreshPlayTime];
 }
 - (void)slotChanged { [self refreshSlot]; }
+- (void)openMainSettings {
+    if(panel_open.load())[self togglePanel];
+    overlay::set_open(true);
+}
+- (void)refreshSaveFolder {
+    const save_folder::View v=save_folder::view();
+    NSString* now=v.custom?[NSString stringWithFormat:@"Saves are in: %@",text(v.folder)]:@"Saves are on this iPhone (the app's own folder).";
+    if(v.pending)now=[now stringByAppendingFormat:@"\nNext time you open the game: %@",
+        v.chosen.empty()?@"this iPhone only":text(v.chosen)];
+    if(!v.notice.empty())now=[now stringByAppendingFormat:@"\n%@",text(v.notice)];
+    self.saveFolderStatus.text=now;
+}
+- (void)chooseSaveFolder {
+    hostui::choose_save_folder([self](std::string path) {
+        if(path.empty())return;
+        save_folder::choose(path);
+        dispatch_async(dispatch_get_main_queue(),^{ [self refreshSaveFolder]; });
+    });
+}
+- (void)defaultSaveFolder {
+    ios::forget_save_folder();
+    save_folder::choose("");
+    [self refreshSaveFolder];
+}
 - (void)refreshSlot {
     if(!panel_open.load()||self.settingsPage.hidden||self.settingsCategory.selectedSegmentIndex!=kSettingsSaves)return;
     if(!self.states.on) {

@@ -3475,12 +3475,7 @@ void settings_window() {
         ImGui::SetNextWindowFocus();  // keyboard / controller navigation starts in the menu
         U.just_opened = false;
     }
-#ifdef WWHD_IOS
-    constexpr const char* settings_title = "塞尔达传说：风之杖 HD 设置";
-#else
-    constexpr const char* settings_title = "Wind Waker HD  -  Settings";
-#endif
-    if (ImGui::Begin(settings_title, &open, fl)) {
+    if (ImGui::Begin("Wind Waker HD  -  Settings", &open, fl)) {
         const std::vector<ext::ShownTab>& tabs = ext::tabs();  // built-in and added (extensions.h)
         // L / R on a controller switch tabs
         if (U.cap_action < 0 && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId)) {
