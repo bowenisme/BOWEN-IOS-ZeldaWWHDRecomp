@@ -1,5 +1,6 @@
 #import <GameController/GameController.h>
 #import <QuartzCore/QuartzCore.h>
+#include "overlay/overlay.h"
 #include <algorithm>
 #include <atomic>
 #include <map>
@@ -126,7 +127,8 @@ std::atomic<bool> g_touch_layout_editing{false};
     BOOL physical = NO;
     for (GCController* c in GCController.controllers) if (c.extendedGamepad) { physical = YES; break; }
     const NSInteger mode = [NSUserDefaults.standardUserDefaults integerForKey:@"ios.touchControls"];
-    const BOOL visible = _active && (_editing || (!ios::controls_block_input() &&
+    // hidden while the main project's Settings window (or its text prompt) is up: it is used by touch
+    const BOOL visible = _active && (_editing || (!ios::controls_block_input() && !overlay::captures() &&
         touch_buttons::visible((int)mode, physical, false)));
     if (!visible) { _guideShown = NO; [self releaseTouches]; }
     self.hidden = !visible;

@@ -313,6 +313,8 @@ void show_startup_notice(const std::string& title, const std::string& text) {
         link.preferredFrameRateRange = CAFrameRateRangeMake(requested, requested, requested);
         g_refresh_request = requested;
     }
+    static bool overlay_was_up = false;  // the touch buttons step aside while the Settings window is open
+    if (const bool up = overlay::captures(); up != overlay_was_up) { overlay_was_up = up; ios::refresh_touch_controls(); }
     const double interval = link.targetTimestamp - link.timestamp;
     g_display_link_hz = interval > 0 ? 1.0 / interval : 0;
 }

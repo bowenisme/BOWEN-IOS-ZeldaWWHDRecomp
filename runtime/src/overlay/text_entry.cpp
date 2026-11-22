@@ -564,6 +564,10 @@ void window() {
 
 // ---------------------------------------------------------------- API
 bool start(const Request& r, Done done) {
+#ifdef WWHD_IOS
+    (void)r; (void)done;
+    return false;  // iPhone/iPad: the system keyboard (input::prompt_text -> ios::prompt_text); the touch buttons cover this one
+#endif
     if (!overlay::alive()) return false;
     auto glyphs = game_font::name_glyphs(r.language);  // read once per language (a few ms)
     {
