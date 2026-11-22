@@ -1322,7 +1322,7 @@ PadState read() {
     PadState k = keyboard_state(!no_host), s = g_pad;
     if (no_host) s = PadState{};
 #ifdef WWHD_IOS
-    else { std::lock_guard<std::mutex> lk(g_mu); ios::touch::merge(s, g_touch_pad); }
+    else ios::touch::merge(s, g_touch_pad);  // (g_mu is already held: locking it again deadlocked)
 #endif
     for (auto& p : script)
         if (frame >= p.from && frame <= p.to) s.buttons |= p.bits;
