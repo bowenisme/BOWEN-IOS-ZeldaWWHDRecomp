@@ -69,6 +69,14 @@ int main() {
     perf::game_frame(); perf::render_frame(); assert(perf::gpu_begin(80) == 0);
     assert(perf::counters().cpu_reads == before.cpu_reads);
     assert(perf::counters().gpu_submissions == before.gpu_submissions);
+    // the minimal overlay (overlay_gpu false): CPU times sampled, no GPU timestamps
+    perf::set_demand(true, false, false);
+    assert(perf::enabled() && perf::gpu_begin(81) == 0);
+    perf::game_frame(); cpu += 2000000; perf::game_frame();
+    assert(perf::snapshot().game.current == 2);
+    perf::set_demand(true, true, false);  // the report still gets the GPU interval
+    assert(perf::gpu_begin(82) != 0);
+    perf::set_demand(false, false);
     // Native HUD survives per-frame desktop updates; handing demand between sources
     // must preserve CPU baselines, rolling averages, and pending GPU completions.
     perf::set_host_demand(true);
@@ -94,5 +102,5 @@ int main() {
     before=perf::counters();
     perf::game_frame(); assert(perf::gpu_begin(102)==0);
     assert(perf::counters().cpu_reads==before.cpu_reads);
-    std::cout << "perf_metrics: formatting, rolling averages, deferred GPU sums, reactivation, hidden counters, independent host/overlay/report demand PASS\n";
+    std::cout << "perf_metrics: formatting, rolling averages, deferred GPU sums, reactivation, hidden counters, CPU-only demand, independent host/overlay/report demand PASS\n";
 }

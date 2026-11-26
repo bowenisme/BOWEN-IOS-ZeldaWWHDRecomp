@@ -22,8 +22,10 @@ struct Metric {
 };
 struct Snapshot { Metric game, render, gpu; };
 // Report sampling is active while the Graphics panel (which contains Copy report) is visible.
-void set_demand(bool overlay, bool report);
-// Independent native-host source; desktop updates cannot turn it off.
+// overlay_gpu: the overlay wants the GPU interval too (the full overlay; the minimal one shows CPU times only, so no
+// GPU timestamps are written for it). The report always gets the GPU interval.
+void set_demand(bool overlay, bool report, bool overlay_gpu = true);
+// Independent native-host source (the iOS host); desktop updates cannot turn it off. It always wants the GPU interval.
 void set_host_demand(bool wanted);
 bool enabled();
 void reset();

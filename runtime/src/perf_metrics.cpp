@@ -7,7 +7,8 @@
 namespace perf {
 namespace {
 std::atomic<bool> active{false};
-std::atomic<unsigned> demand{0};
+std::atomic<unsigned> demand{0};  // 1: the desktop overlay / report (set_demand), 2: the iOS host (set_host_demand)
+std::atomic<bool> gpuWanted{false};  // GPU timestamps for the desktop demand (set_demand); the host's always wants them
 std::atomic<uint64_t> epoch{1};
 std::atomic<uint64_t> gpuCount{0}, cpuCount{0}, timestampCount{0}, queryReads{0}, minimumQueryAge{UINT64_MAX};
 std::mutex mutex;
@@ -61,7 +62,10 @@ void update_demand(unsigned source, bool on) {
     active.store(wanted, std::memory_order_release);
 }
 }
-void set_demand(bool overlay, bool report) { update_demand(1, overlay || report); }
+void set_demand(bool overlay, bool report, bool overlay_gpu) {
+    gpuWanted.store(report || (overlay && overlay_gpu), std::memory_order_relaxed);
+    update_demand(1, overlay || report);
+}
 void set_host_demand(bool wanted) { update_demand(2, wanted); }
 bool enabled() { return active.load(std::memory_order_acquire); }
 void reset() {
@@ -72,7 +76,7 @@ uint64_t generation() { return epoch.load(std::memory_order_acquire); }
 void game_frame() { sample(true); }
 void render_frame() { sample(false); }
 uint64_t gpu_begin(uint64_t frame) {
-    if (!enabled()) return 0;
+    if (!enabled() || !(gpuWanted.load(std::memory_order_relaxed) || (demand.load(std::memory_order_relaxed) & 2u))) return 0;
     std::lock_guard<std::mutex> lock(mutex);
     if (!active) return 0;
     auto& f = gpu[frame % gpu.size()];

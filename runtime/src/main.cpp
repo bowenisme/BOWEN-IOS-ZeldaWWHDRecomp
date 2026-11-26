@@ -55,6 +55,8 @@
 #include "report_header.h"
 #include "crash_addr.h"
 #include "build_info.h"
+#include "pipeline_runtime_identity.h"
+extern "C" unsigned g_mod_hook_count;  // mods/guest_mods.cpp: set by a game-code build with code-mod support
 #ifdef WWHD_DECOMP
 #include "decomp/decomp.h"
 #endif
@@ -117,13 +119,13 @@ static void crash_log_raw(int fd, const char* s, size_t n) {
 }
 static void crash_out(int fd, const char* s, size_t n) { crash_context::redact(fd, {s,n}, crash_raw); }
 static void crash_log_only(int fd, const char* s, size_t n) { crash_context::redact(fd, {s,n}, crash_log_raw); }
-#ifndef WWHD_IOS
+#ifdef WWHD_HAS_VULKAN
 extern "C" void wwhd_compile_journal_on_crash() __attribute__((weak));  // gfx/vulkan/compile_journal.cpp
 #endif
 
 static void crash_handler(int sig, siginfo_t* si, void* uctx) {
     // a crash while compiling a shader or pipeline: noted so the next start leaves it out (compile_journal.h)
-#ifndef WWHD_IOS  // Vulkan only; the iPhone build is Metal-only
+#ifdef WWHD_HAS_VULKAN
     if (wwhd_compile_journal_on_crash) wwhd_compile_journal_on_crash();
 #endif
     uintptr_t a = (uintptr_t)si->si_addr;
@@ -486,6 +488,16 @@ int wwhd_runtime_main(int argc, char** argv) {
 #else
 int main(int argc, char** argv) {
 #endif
+    // setup's start check of a newly built game, before it replaces the one before (tools/installer/setup.py
+    // build_identity): proves the binary starts here (its libraries load) and says what it is, then exits.
+    // The pipeline identity keys the prepared shaders (pipeline_runtime_identity.h).
+    for (int i = 1; i < argc; ++i)
+        if (!strcmp(argv[i], "--build-identity")) {
+            std::printf("{\"version\": \"%s\", \"commit\": \"%s\", \"variant\": \"%s\", \"pipeline\": \"%s\"}\n",
+                        build::version(), build::commit(), build::variant(), wwhd::pipeline_runtime_identity());
+            std::fflush(stdout);
+            return 0;
+        }
 #ifndef WWHD_IOS
     enter_data_folder(argc, argv);  // before anything reads a relative path (iOS: the host already entered Documents)
 #endif
@@ -506,7 +518,8 @@ int main(int argc, char** argv) {
 #if defined(WWHD_IOS)
     // Native guest code is generated and signed on the Mac, never compiled on the iPad.
 #elif defined(WWHD_DECOMP)
-    mods::code::startup(argc, argv, true);  // the decomp version: never swapped for the normal game's code-mod build
+    // the decomp version: never swapped for the normal game's code-mod build (g_mod_hook_count: its own code-mod support)
+    mods::code::startup(argc, argv, true, g_mod_hook_count != 0);
 #else
     mods::code::startup(argc, argv);
 #endif
@@ -564,6 +577,7 @@ int main(int argc, char** argv) {
 #endif
     bool warm_shaders = false;
     bool save_arg = false;  // --save: the command line wins over a save folder chosen in the Saves tab
+                            // (except the install's own folder: save_override below)
     std::string randomizer_files;  // --randomizer-files
     bool install_story_notebook = false;
     bool start_mcp = false;
@@ -687,6 +701,18 @@ int main(int argc, char** argv) {
         return result;
     }
 #endif
+#ifdef WWHD_DECOMP
+    // the decomp version plays only the game as it is (decomp_mods.cpp): a seed chosen on the Randomizer page needs the
+    // normal game (setup starts that one for it); started anyway, it says so and plays the unrandomized game
+    if (const std::string seed = decomp::mods::randomizer_conflict(); !seed.empty()) {
+        LOG("[randomizer] randomized game %s is selected; the decomp version plays the game as it is", seed.c_str());
+        if (ask_player("Wind Waker HD: randomized game",
+                       "The randomized game " + seed + " is selected, but the decomp version plays only the game as it "
+                       "is. To play the randomized game, start Wind Waker HD without the decomp version.",
+                       {"Play the game as it is", "Quit"}) == 1)
+            return 1;
+    }
+#endif
     if (randomizer::compiled_seed()) {
         // An in-app seed plays its changed files over the installed game (setup --randomize); a seed
         // installed as a whole output folder is the game folder itself.
@@ -744,6 +770,19 @@ int main(int argc, char** argv) {
 #else
     constexpr const char* mod_recovery = "To recover, launch with WWHD_CODE_MODS=0, disable the problematic mod in Settings > Mods, then restart.";
 #endif
+    // --save with the install's own folder is how every launcher starts the game: that is the default
+    // folder, not an override. Decided on the folder as given, before a randomized game or a save
+    // profile moves it, so those start the same way from a launcher as without --save.
+    bool save_override = save_arg;
+#ifndef __ANDROID__
+    if (save_arg) {
+        std::error_code ec;
+        std::vector<std::filesystem::path> installs{std::filesystem::path(host::exe_dir()).parent_path(),
+                                                    std::filesystem::current_path(ec)};
+        if (const char* install = std::getenv("WWHD_INSTALL_DIR")) installs.emplace_back(install);
+        save_override = !save_folder::install_default(config::save_dir, installs);
+    }
+#endif
     mods::save_profile::Selection save_profile;
     mods::save_profile::Paths save_paths;
     save_folder::Policy save_policy;
@@ -753,7 +792,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("A randomized executable cannot also activate a mod with a separate save profile. Use the original game executable for this mod.");
         if (randomizer_paths::legacy_preflight_required(randomizer::compiled_seed(), warm_shaders)) {
             std::string why;
-            if (!save_folder::legacy_randomizer_preflight(config::save_dir, host::config_dir(), save_arg, why)) {
+            if (!save_folder::legacy_randomizer_preflight(config::save_dir, host::config_dir(), save_override, why)) {
                 LOG("[save-folder] %s", why.c_str());
                 ask_player("Wind Waker HD: separate randomized saves", why, {"Quit"});
                 return 1;
@@ -761,8 +800,8 @@ int main(int argc, char** argv) {
         }
         // Setup and launchers pass --save with the install's default folder: that is no
         // choice of the player, so a randomized game still gets its own per-seed folder.
-        config::save_dir = randomizer::save_directory(config::save_dir, randomizer::explicit_save_folder(save_arg, config::save_dir));
-        save_paths=mods::save_profile::paths(save_profile,config::save_dir,host::config_dir(),save_arg);
+        config::save_dir = randomizer::save_directory(config::save_dir, randomizer::explicit_save_folder(save_override, config::save_dir));
+        save_paths=mods::save_profile::paths(save_profile,config::save_dir,host::config_dir(),save_override);
         if (randomizer::compiled_seed()) {
             save_paths.preferences = randomizer::config_directory(host::config_dir());
             save_paths.backups = randomizer_paths::backups(config::save_dir, seed_namespace);
@@ -804,7 +843,7 @@ int main(int argc, char** argv) {
 #ifndef __ANDROID__
     // A save folder chosen in Settings > Saves (save_folder.h), for example inside a cloud folder:
     // a change made there is applied now, and the folder is checked before the game reads its save.
-    if (!save_arg && !warm_shaders) {
+    if (!save_override && !warm_shaders) {
 #ifdef WWHD_IOS
         // iPhone/iPad: reopen the chosen folder (Files / iCloud Drive) and have iCloud download the save
         // before it is read (platform/ios/save_folder_ios.mm)
@@ -886,6 +925,7 @@ int main(int argc, char** argv) {
     if (m.entry != g_recomp_entry_point) fatal("%s does not match the recompiled code", rpx.c_str());
     LOG("[boot] loaded %s (%s build, title %s): entry %08X sda %08X sda2 %08X data end %08X", rpx.c_str(),
         g_guest_build_name, g_guest_build_title_id, m.entry, m.sda_base, m.sda2_base, m.data_end);
+    if (m.relocated) LOG("[boot] relocations changed %u places of the loaded game code and data", m.relocated);
 
     dispatch::init();
     // the story system's required package (mods/required.h): what is installed, no network at the start.
