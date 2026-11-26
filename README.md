@@ -6,6 +6,13 @@ Metal rendering, 60 and 120 fps, MetalFX upscaling, touch controls, controller s
 full-screen / black-bars switch, all in one iPhone-style settings panel that also carries the main project's gameplay and
 mod options. Use the `ios` branch.
 
+**Based on main project v0.5.2.** This fork follows only the main project's released updates. Each one is tested on a
+real iPhone before it reaches the `ios` branch.
+
+> **Not the main project's "iPhone as the GamePad" app.** That app, in the main project's `ios/WWHDGamePad` folder,
+> turns an iPhone into a GamePad for the game running on a **Mac**. This fork runs **the whole game on the iPhone or
+> iPad itself**.
+
 > **No downloads of the game or the app are provided here, and none ever will be.** You build the app on your own Mac
 > from **your own** copy of the game. The app contains code recompiled from your copy, so it is for your own devices
 > only. Don't share the `.ipa` or the game files.
@@ -17,7 +24,8 @@ mod options. Use the `ios` branch.
 - **An iPhone or iPad** with iOS/iPadOS 17 or later and a USB cable. Recent iPhones (iPhone 15 Pro and newer) run it
   best.
 - **Your own Wii U copy of The Wind Waker HD, USA version** (a `.wua` from your console, or an extracted folder with
-  `code/`, `content/` and `meta/`). The EUR version works too if you give the extracted folder.
+  `code/`, `content/` and `meta/`). The EUR version works too if you give the extracted folder. The Japanese release,
+  which the main project supports since v0.5.2, doesn't work on iPhone yet.
 - **The macOS release of the main project** ([Releases](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp/releases)),
   unzipped into Applications. The script borrows its game extractor.
 - **An Apple ID signed in to Xcode.** A **paid Apple Developer account** ($99/year) is strongly recommended. See
