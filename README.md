@@ -6,7 +6,7 @@ Metal rendering, 60 and 120 fps, MetalFX upscaling, touch controls, controller s
 full-screen / black-bars switch, all in one iPhone-style settings panel that also carries the main project's gameplay and
 mod options. Use the `ios` branch.
 
-**Based on main project v0.5.2.** This fork follows only the main project's released updates. Each one is tested on a
+**Based on main project v0.5.3.** This fork follows only the main project's released updates. Each one is tested on a
 real iPhone before it reaches the `ios` branch.
 
 > **Not the main project's "iPhone as the GamePad" app.** That app, in the main project's `ios/WWHDGamePad` folder,
@@ -159,6 +159,8 @@ The project has three parts:
   and a catalogue of community mods, installed from inside the game; see [Mods](#mods).
 
 ## What's new
+
+**v0.5.3:** a Windows setup fix from the main project; nothing changes on iPhone.
 
 **v0.5.2: the Japanese release, Link's look, an iPhone as the GamePad and a much faster renderer.**
 - **New:** the Japanese release is supported, Link's colours can be changed per save file, an iPhone can be the
